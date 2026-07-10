@@ -43,7 +43,9 @@ The shared project has **one** service-role key that bypasses RLS across *every*
 
 ### Auth is opt-in per app
 
-`auth.users` is project-wide and shared, but only apps that actually want cross-app identity should use it. So far only the Rocky Coast Guide family (village apps sharing bookmarks/identity) needs this. Distilled, Sonic Radar, PM ReArchitected, and Is It Offensive don't use Supabase Auth. Don't build auth in preemptively for an app that hasn't asked for it.
+`auth.users` is project-wide and shared, but only apps that actually want cross-app identity should use it. So far Rocky Coast Guide (village apps sharing bookmarks/identity) and Distilled (email/password + Google OAuth, though local dev mostly bypasses it via `DEV_BYPASS_USER_ID`) use real Supabase Auth. Sonic Radar, PM ReArchitected, and Is It Offensive don't. Don't build auth in preemptively for an app that hasn't asked for it.
+
+**Gotcha: Supabase Auth logins are project-wide, not per-schema.** Since every app now shares one Supabase project, the same email can only be registered once across the *entire* project — not once per app. Creating a test/admin account for App A with `you@example.com`, then trying to create a *different* test account for App B with the same email, fails outright ("already registered"). If two apps each need their own separate test identity, use distinct addresses (Gmail's `+tag` addressing works fine — `you+appname@gmail.com` still lands in the same inbox but registers as a distinct account). This came up for real: Rocky Coast Guide's admin account and Distilled's test account both wanted `rallen7425@gmail.com`; Distilled's ended up as `rallen7425+distilled@gmail.com` instead.
 
 Shared identity, when used, should stay invisible to the end user — no visible cross-app branding or shared login screen implying "one account for everything." Think Automattic/WordPress.com: one underlying account system, no visible tie-in between products.
 
