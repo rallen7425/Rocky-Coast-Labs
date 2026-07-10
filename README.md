@@ -6,9 +6,10 @@ Turborepo for the Rocky Coast Guide app family (shared regional content + per-vi
 
 ```
 apps/
-  summer-village/   Village app #1 — copied from the standalone repo as a scaffolding step.
-                     Still points at its own standalone Supabase project; not yet cut over
-                     to the shared rocky-coast-labs Supabase project or repointed in Vercel.
+  summer-village/   Village app #1 — a SNAPSHOT copied from the standalone repo on
+                     2026-07-10, before that standalone repo was itself migrated to the
+                     shared project. This copy is now stale — re-sync from the standalone
+                     repo before using it for anything.
 packages/
   rocky-coast-core/ Shared regional components/queries/types — placeholder, not yet extracted.
   rocky-coast-auth/ Shared Supabase auth client/hooks for the guide family — placeholder.
@@ -17,9 +18,14 @@ packages/
 
 ## Status
 
-Scaffold only (created 2026-07-10). The live `summer-village-life.vercel.app` deployment
-still runs from the original standalone repo (`Rocky Coast Guide/Rocky Coast Guide/app`,
-pushed to `rallen7425/Rocky-Coast-Guides`) — nothing here is deployed yet. A future session
-will: extract shared code into the `packages/*` placeholders, migrate `summer-village`'s
-schema into the shared Supabase project's `village_summer` schema, repoint Vercel's root
-directory at `apps/summer-village`, and retire the old standalone repo/project.
+Scaffold only, and the `apps/summer-village` snapshot inside it is now out of date. The
+actual live app was migrated separately, directly in its own standalone repo
+(`rallen7425/Rocky-Coast-Guides`) — see that repo's `CLAUDE.md` for current status. It now
+runs on this shared project's `village_summer` schema and is deployed and verified in
+production at `summer-village-life.vercel.app`, but it still deploys FROM the standalone
+repo, not from this monorepo.
+
+A future session will: re-sync `apps/summer-village` from the standalone repo's current
+(migrated) state, extract shared code into the `packages/*` placeholders once a second
+village app actually exists to justify it, repoint Vercel's root directory at
+`apps/summer-village`, and retire the old standalone repo.

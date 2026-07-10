@@ -10,12 +10,14 @@ Each app gets its own Postgres schema, never `public`:
 
 | App | Schema | Status |
 |---|---|---|
-| Sonic Radar | `sonicradar` | Live — migrated 2026-07-10 |
-| Distilled | `distilled` (reserved) | Not yet migrated — still on its own standalone project |
-| Rocky Coast Guide / Summer Village | `rockycoast_core`, `village_summer` (reserved) | Not yet migrated — still on its own standalone project |
+| Sonic Radar | `sonicradar` | Live in production — migrated 2026-07-10 |
+| Distilled | `distilled` | Live in production — migrated 2026-07-10 |
+| Rocky Coast Guide / Summer Village | `village_summer` (`rockycoast_core` reserved, unused) | Live in production — migrated 2026-07-10 |
 | PM ReArchitected | — | No database; doesn't need one |
 | Is It Offensive? | — | No database; doesn't need one |
 | Portfolio tracking | `_meta` | Live |
+
+**All three apps that need a database are now fully migrated, deployed, and automated-verified** (headless curl/browser checks confirming real data renders — see History). What's still outstanding is manual, hands-on testing of each app in normal day-to-day use, planned for a future session — see "Next steps" below.
 
 ### Onboarding a new app onto the shared project
 
@@ -62,7 +64,7 @@ GET {SUPABASE_URL}/rest/v1/apps   (Accept-Profile: _meta header, anon key)
 
 The one app family with actual shared code — Rocky Coast Guide (standalone regional app) and per-village apps (Summer Village Guide, future Community 2) share regional content and UI. Structured as a Turborepo, each app still deploys as its own independent Vercel project (Root Directory pointed at the specific `apps/*` folder).
 
-**Current status: scaffold only** (created 2026-07-10). `apps/summer-village` is a copy of the standalone app, still pointing at its own standalone Supabase project (`anlwanoqrixidexfvyfq`) — not yet repointed to `village_summer` in the shared project, not yet wired to Vercel/GitHub from this repo. `packages/rocky-coast-core`, `packages/rocky-coast-auth`, `packages/ui` are empty placeholders. The live `summer-village-life.vercel.app` deployment still runs from the original standalone repo (`rallen7425/Rocky-Coast-Guides`).
+**Current status: scaffold only, and now stale** (created 2026-07-10, before the standalone repo's own cutover). `apps/summer-village` is a snapshot of the standalone app taken *before* it was migrated to `village_summer` — it still has the old code pointing at the retired standalone Supabase project. The actual migrated, deployed code lives in the standalone repo (`rallen7425/Rocky-Coast-Guides`), not here. `packages/rocky-coast-core`, `packages/rocky-coast-auth`, `packages/ui` are still empty placeholders. Before doing anything with this monorepo in a future session, re-sync `apps/summer-village` from the standalone repo's current state first. The live `summer-village-life.vercel.app` deployment runs from the standalone repo, not from this monorepo.
 
 Other apps (PM ReArchitected, Distilled, Sonic Radar, Is It Offensive) are standalone — no shared code, don't force them into this monorepo.
 
@@ -70,7 +72,18 @@ Other apps (PM ReArchitected, Distilled, Sonic Radar, Is It Offensive) are stand
 
 By the time this shared platform was built (2026-07-10), three apps already had separate live standalone Supabase projects — exactly the sprawl this is meant to prevent:
 - Distilled (`qyjkqfgodgnjlvjdyuci`) — active, in daily use.
-- Sonic Radar (`supabase-red-diamond` / `nxthgmqmgdgatqjnywhs`) — had gone inactive and paused; held real enrichment data (958 albums, all with AI-generated summaries, chart rankings) that needed rescuing before migrating. Rescued via REST API dump (no direct DB password was available, so `pg_dump`/`psql` weren't an option — a full JSON export + REST re-insert into the new schema worked fine for a single-table app this size). Old project kept around, paused, as a dormant backup.
+- Sonic Radar (`supabase-red-diamond` / `nxthgmqmgdgatqjnywhs`) — had gone inactive and paused; held real enrichment data (958 albums, all with AI-generated summaries, chart rankings) that needed rescuing before migrating. Rescued via REST API dump (no direct DB password was available, so `pg_dump`/`psql` weren't an option — a full JSON export + REST re-insert into the new schema worked fine for a single-table app this size).
 - Rocky Coast Guide (`anlwanoqrixidexfvyfq`) — active, has real seeded content and an admin login.
 
-Sonic Radar was the first (and so far only) app fully cut over to the shared project. Distilled and Rocky Coast Guide are still running on their original standalone projects — migrating them is future work, following the same pattern Sonic Radar's cutover established: rescue/back up data first if there's anything live, create the schema + scoped grants in the shared project, re-point the app's client, verify locally, then redeploy.
+All three were migrated the same day, in this order: Sonic Radar first (as the pattern-proving pilot, lowest stakes since it had no live users), then Distilled, then Rocky Coast Guide. Each followed the same steps: rescue/back up data via REST API export, create the schema + scoped grants (never `GRANT ALL` to `anon` — caught as a real mistake during the first migration), re-point the app's client to the schema, verify (locally, then via automated headless checks against production), then redeploy. All three old standalone projects are now **paused** as free, dormant backups — a deliberate choice over deleting them outright, since paused projects don't count against the free tier's active-project limit and cost nothing to keep as a safety net.
+
+Two things worth knowing about that limit, learned empirically rather than documented anywhere by Supabase: it's **2 concurrently active projects**, not 2 total — paused projects are free and don't count. And `supabase config push` pushes the CLI's local `config.toml` wholesale (api + auth + storage sections together), not just the schema-exposure diff you meant to change — it silently overwrote this project's Auth defaults with generic local-dev values the first time it ran. Not a live problem today (no app here relies on those settings yet), but review `[auth]`/`[storage]` in `config.toml` before ever running that command again.
+
+For Distilled and Rocky Coast Guide specifically: neither app's real Supabase Auth accounts were migrated, since no real end users existed at migration time (confirmed with the user beforehand) — only test/dev accounts. Distilled's local dev already uses a fixed `DEV_BYPASS_USER_ID` test user (unaffected). Rocky Coast Guide's real admin login was recreated fresh via the Supabase Admin API (`role: admin` in `user_metadata`) and verified working end-to-end (guest mode + `/admin` console) on production.
+
+## Next steps (as of 2026-07-10)
+
+1. **Manual redeploy/testing pass** on all three migrated apps, in a future session — today's verification was automated (curl + headless-browser checks confirming real data renders correctly), not hands-on human testing of the actual day-to-day workflows.
+2. **Then resume Distilled product work** — held off during this whole infra push. Priority order (per the user, deliberately *not* the onboarding-first order in Distilled's own CLAUDE.md): resolve outstanding UI issues, fix content-management inconsistencies, finish outstanding Zones work — all before circling back to rebuilding onboarding.
+3. Rocky Coast Guide's Turborepo shared-code extraction (`packages/rocky-coast-core`, `packages/rocky-coast-auth`, `packages/ui`) stays deferred until a second village app actually exists to justify it — building it now would be speculative.
+4. PM ReArchitected has no Vercel deployment yet (only GitHub) — not blocking anything, just not done.
