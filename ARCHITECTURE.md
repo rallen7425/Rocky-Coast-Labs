@@ -13,11 +13,11 @@ Each app gets its own Postgres schema, never `public`:
 | Sonic Radar | `sonicradar` | Live in production — migrated 2026-07-10 |
 | Distilled | `distilled` | Live in production — migrated 2026-07-10 |
 | Rocky Coast Guide / Summer Village | `village_summer` (`rockycoast_core` reserved, unused) | Live in production — migrated 2026-07-10 |
-| PM ReArchitected | — | No database; doesn't need one |
+| PM ReArchitected | `pm_rearchitected` | Live in production — AI Glossary migrated 2026-07-23 |
 | Is It Offensive? | — | No database; doesn't need one |
 | Portfolio tracking | `_meta` | Live |
 
-**All three apps that need a database are now fully migrated, deployed, and automated-verified** (headless curl/browser checks confirming real data renders — see History). What's still outstanding is manual, hands-on testing of each app in normal day-to-day use, planned for a future session — see "Next steps" below.
+**All apps that need a database are now fully migrated, deployed, and automated-verified** (headless curl/browser checks confirming real data renders — see History). PM ReArchitected's AI Glossary (categories/terms/aliases/related_terms/sources, public read-only, no auth) was the fourth app onboarded, added 2026-07-23 — same pattern as the original three, minus the `authenticated` grants since this app has no login concept. What's still outstanding is manual, hands-on testing of each app in normal day-to-day use, planned for a future session — see "Next steps" below.
 
 ### Onboarding a new app onto the shared project
 
