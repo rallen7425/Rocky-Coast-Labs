@@ -1,6 +1,7 @@
 {
   "name": "rocky-coast-labs",
   "private": true,
+  "packageManager": "npm@10.2.3",
   "workspaces": [
     "apps/*",
     "packages/*"
