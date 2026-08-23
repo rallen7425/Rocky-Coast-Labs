@@ -21,7 +21,7 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   enterGuestMode: () => void
-  updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: Error | null }>
+  updateProfile: (updates: Partial<Omit<UserProfile, 'role'>>) => Promise<{ error: Error | null }>
 }
 
 const GUEST_KEY = 'svl_guest_mode'
@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const user = session?.user ?? null
 
   const profile: UserProfile | null = user ? {
-    role: (user.user_metadata?.role as UserRole) ?? 'renter',
+    role: (user.app_metadata?.role as UserRole) ?? 'renter',
     cottageNumber: user.user_metadata?.cottage_number ?? null,
     checkIn: user.user_metadata?.check_in ?? null,
     checkOut: user.user_metadata?.check_out ?? null,
@@ -77,9 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsGuest(true)
   }
 
-  const updateProfile = async (updates: Partial<UserProfile>) => {
+  const updateProfile = async (updates: Partial<Omit<UserProfile, 'role'>>) => {
     const metaUpdates: Record<string, string | null> = {}
-    if (updates.role !== undefined) metaUpdates.role = updates.role
     if (updates.cottageNumber !== undefined) metaUpdates.cottage_number = updates.cottageNumber
     if (updates.checkIn !== undefined) metaUpdates.check_in = updates.checkIn
     if (updates.checkOut !== undefined) metaUpdates.check_out = updates.checkOut
