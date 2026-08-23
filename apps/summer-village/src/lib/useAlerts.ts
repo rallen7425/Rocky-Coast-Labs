@@ -33,7 +33,7 @@ export function useActiveAlert() {
 
     const channel = supabase
       .channel('alerts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, () => fetchAlert())
+      .on('postgres_changes', { event: '*', schema: 'village_summer', table: 'alerts' }, () => fetchAlert())
       .subscribe()
 
     return () => {
