@@ -2,65 +2,69 @@
 
 ---
 
-## 🗂 Session Status (updated 2026-07-10)
+## 🗂 Session Status (updated 2026-08-23)
 
-**2026-07-10:** Migrated onto the shared `rocky-coast-labs` Supabase project (`village_summer` schema) as part of a portfolio-wide infra consolidation — see the Infrastructure table below and `rocky-coast-labs/ARCHITECTURE.md` for full detail. Verified in production, end to end: guest mode (real alert + events data), admin sign-in → `/admin` console, AND the full renter flow — sign in → 3-step onboarding (name, cottage number, check-in/out dates) → Home/Village/Events/Guide all rendering real data, with the entered name and cottage number correctly reflected ("Welcome, Rick" / "Cottage 42"). This resolves the long-standing "onboarding never tested end-to-end" item below — no issues found.
+**2026-08-23: Monorepo cutover completed.** This app now deploys from the shared `rocky-coast-labs` Turborepo (`apps/summer-village`), not the old standalone `Rocky-Coast-Guides` repo. Same Vercel project (`prj_8Y6MvpbBi4Ln0ohgPZrQkQ6b5t0n`), same live URL — just repointed. See the Infrastructure table below and `rocky-coast-labs/ARCHITECTURE.md` for full detail. The standalone repo is being kept as a dormant fallback for now, not yet archived — archive it once this cutover has proven stable over a few real sessions.
+
+A code review was then run against the full app (not just the migration diff) and found real bugs, some already fixed and deployed today, some fixed in code but **not yet pushed/deployed** — see the three status buckets below before assuming what's actually live.
 
 ### Infrastructure
 
 | Resource | Detail |
 |---|---|
-| **GitHub repo** | `git@github.com:rallen7425/Rocky-Coast-Guides.git` |
+| **GitHub repo** | `git@github.com:rallen7425/Rocky-Coast-Labs.git` (monorepo — this app lives at `apps/summer-village`). The old `rallen7425/Rocky-Coast-Guides` repo still exists as an untouched dormant fallback. |
 | **Live URL** | https://summer-village-life.vercel.app |
 | **Admin URL** | https://summer-village-life.vercel.app/admin |
-| **Vercel project** | `rick-allen-s-projects / summer-village-life` (ID: `prj_8Y6MvpbBi4Ln0ohgPZrQkQ6b5t0n`) |
+| **Vercel project** | `rick-allen-s-projects / summer-village-life` (ID: `prj_8Y6MvpbBi4Ln0ohgPZrQkQ6b5t0n`) — Git source: `rocky-coast-labs`, Root Directory: `apps/summer-village` |
 | **Supabase project** | `rocky-coast-labs` (ref `kywdezqgrtpzuecxxvfc`) — shared project, schema `village_summer` |
-| **Supabase access token** | Personal access token (stored locally — do not commit) |
-| **Admin credentials** | `rallen7425@gmail.com` (role: admin, email confirmed) — password in `rocky-coast-labs/.secrets/rcg-admin-password.txt` (gitignored); move to a real password manager and rotate when convenient |
+| **Admin credentials** | `rallen7425@gmail.com` (role: admin) — password in `rocky-coast-labs/.secrets/rcg-admin-password.txt` (gitignored). Verified working 2026-08-23. |
 
-**Migration note (2026-07-10):** Moved from a standalone Supabase project (`anlwanoqrixidexfvyfq`) into the shared `rocky-coast-labs` project's `village_summer` schema, alongside the rest of the Rocky Coast Labs portfolio. `src/lib/supabase.ts` now passes `db: { schema: 'village_summer' }` to `createClient` — don't remove that or queries silently hit (nonexistent) `public.*`. Data migrated as-is (1 alert, 10 events, 11 amenities, 4 content pages, 1 weather_cache row). The admin auth account was **not** migrated (no real end users existed) — a fresh admin account was created directly via the Supabase Admin API instead, and both guest mode and `/admin` are verified working on production. The old standalone project is a candidate to pause now that this is confirmed stable. A Turborepo scaffold for the wider Rocky Coast Guide app family exists at `../../rocky-coast-labs/apps/summer-village` (see that repo's `ARCHITECTURE.md`), but this standalone repo is still what's actually deployed — the monorepo migration (shared code extraction, Vercel repoint) hasn't happened yet.
+**Two real Vercel/Turbo gotchas hit during the cutover** (see `rocky-coast-labs/ARCHITECTURE.md` for the full writeup):
+- Vercel's "sensitive" env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) are write-only and only resolvable during Vercel's own **remote** build — a local `vercel build` (even with `--prod`) silently bakes in *empty* values instead of erroring, which broke production for a few minutes before a `vercel rollback` fixed it. **Always deploy with `vercel deploy --prod` (no `--prebuilt`) from the repo root**, never build locally and deploy prebuilt output.
+- Turbo 2.x needs `packageManager` set in the monorepo root `package.json` to resolve the npm workspace during a Vercel build — already fixed there, don't remove it.
+- Also: this app has a PWA service worker that aggressively caches assets. If a fix doesn't appear to be live after a deploy, check for a stale service worker before assuming the deploy failed (`navigator.serviceWorker.getRegistrations()` + `caches.keys()` in devtools, unregister/clear, hard reload).
 
-### What's complete
+### ✅ Live in production right now
 
-- ✅ Full app scaffold — Vite 5 + React 18 + TypeScript + Tailwind CSS v3
-- ✅ All 5 screens built and matching HTML prototypes: Home, Village, Events, Guide, Menu drawer
-- ✅ Supabase schema — migrations `001_schema.sql`, `002_rls.sql`, `003_seed.sql` run against live project
-- ✅ Seed data live — 1 alert, 10 events (relative dates), 11 amenities, 4 content pages
-- ✅ Auth — LoginPage, 3-step OnboardingPage, AuthProvider, role-based route guards
-- ✅ Admin console — `/admin` with Dashboard, Alerts, Events, Amenities CRUD (role-guarded)
-- ✅ PWA — service worker, web manifest, offline caching via Workbox
-- ✅ Deployed to Vercel production (commit `b52aef8`, latest deploy `dpl_2BvGhFVFySE3rN6oGMLoxfTV3paN`)
-- ✅ Supabase env vars set on Vercel (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`)
-- ✅ Admin user created in Supabase Auth with `role: admin` in user_metadata
-- ✅ SplashPage — barn background, "Welcome to Summer Village", Sign In + Continue as Guest buttons
-- ✅ Guest mode — `isGuest` flag in auth context, persisted in `localStorage` (`svl_guest_mode`); guests skip onboarding, see Sign In prompt in menu drawer; cleared on real sign-in
-- ✅ HEIC → JPEG conversion — all images converted for Chrome compatibility (`sv-barn.jpg`, `rocky-coast-guide.jpg`); all imports updated across the app
-- ✅ Home screen gradient tuned — barn photo visible across full page (max 0.58 overlay), not blacked out at bottom
-- ✅ YourPlanCard visual polish — heading matched to "Events & Activities" (14px font-display bold); background adjusted (`rgba(8,18,36,0.28)`) to visually match WeatherRow despite sitting higher in the gradient
+- The monorepo cutover itself — `village_summer` schema targeting, real seeded data rendering (alerts, events, weather placeholder, amenities).
+- Alerts Realtime subscription fix — was hardcoded to `schema: 'public'` (a leftover from before the schema migration), so live alert updates silently stopped working for already-open sessions. Fixed and verified live.
+- The `village_summer.*` admin-role RLS policies now check `app_metadata` instead of `user_metadata` (this migration was pushed to the database directly) — see the security item below for why, and note the **code** side of this fix is not deployed yet.
 
-### Known issues / next session must address
+### 🟡 Fixed in code, committed locally, but NOT pushed to GitHub or deployed
 
-1. **GitHub auto-deploys will fail** — Vercel's `rootDirectory` is `null`. Pushes to `main` build from repo root (no `package.json` there) and fail. **Always deploy manually via CLI from `app/`:** `cd app && vercel --prod`. Fix properly by adding a `vercel.json` at the repo root pointing builds to `app/`.
+Two commits sit on `main` ahead of `origin/main` — push and `vercel deploy --prod` them before starting new work, so the next session isn't debugging against a stale production site:
 
-2. ~~Regular renter login flow not end-to-end tested~~ — **RESOLVED 2026-07-10.** Full sign-in → onboarding → home flow verified working on production against the new shared Supabase project, no issues found.
+1. **`4db57d4` — Security fix (privilege escalation).** The code review found that admin status was read from `user_metadata`, which any signed-in user can self-edit via `supabase.auth.updateUser()` regardless of what the app's own UI allows — meaning any renter could grant themselves admin. The **database** side is already live (RLS policies + an `app_metadata` backfill for the existing admin account were pushed). The **code** side (`auth.tsx` now reads `app_metadata` and can no longer write `role` at all) is committed but not deployed — until it is, the actual exploit is already closed at the RLS layer, but the deployed frontend still trusts the old field for its own `/admin` route guard, which is a smaller but still real gap (client-side spoofing could show the admin UI shell, though backend writes would fail RLS either way).
+2. **`99d8ad0` — Village/Events pages showed fake, hardcoded data; two display bugs.** `VillagePage` never queried the `amenities` table (admin status changes never reached guests) and the full `/events` tab showed a hardcoded static list from June 2026 instead of live data. Both now pull from Supabase via new `useAmenities()`/generalized `useUpcomingEvents()` hooks. Also fixed: `AdminEventsPage` showing the literal text "(~null mi)" for events with no distance entered, and `EventsScroll`'s distance badge treating a real `0` mile distance as missing.
 
-3. **Weather data is static** — `weather_cache` table is always empty. WeatherRow shows hardcoded placeholder data. Needs a Supabase Edge Function on a cron schedule to fetch real weather + tide data.
+**After deploying #1, the admin account needs to sign out and back in** — the current login session was issued before the `app_metadata` change and won't reflect it until refreshed.
 
-4. **Content pages not built** — Menu items (Arrival Guide, Renter's Guide, WiFi, Property Rules, FAQ) tap to nothing. `content_pages` table is seeded but no detail screens exist.
+### 🟠 In progress, not committed — live weather/tide feature
 
-5. **Splash screen shown to returning signed-in users** — If a user clears `localStorage` but still has a Supabase session cookie, the routing logic needs to be verified. Currently `RequireAuth` redirects to `/welcome` only if `!session && !isGuest`, which should be correct.
+Per the long-standing known issue below, `weather_cache` has never been populated — `WeatherRow` showed hardcoded placeholder values. Built today, not finished:
 
-### Vercel deployment (CLI — required until GitHub auto-deploy is fixed)
+- **Edge Function `update-weather-cache`** (`supabase/functions/update-weather-cache/index.ts`) — already deployed directly to Supabase (`supabase functions deploy`, independent of the Vercel/git pipeline) and manually tested successfully (wrote a real row: 66°F from NWS station KSFM/Sanford, tide predictions from NOAA station 8419317/Wells-Webhannet River). Not yet scheduled to run automatically.
+- **Migration `20260823000003_village_summer_weather_cron.sql`** — written but **not pushed to the database**. It enables `pg_cron`/`pg_net` on the shared project, schedules the function every 30 min, and widens `weather_cache` read access to `anon` (guests see weather today via the old hardcoded values; without this grant they'd see blanks once real data replaces the hardcoding, since the table was previously `authenticated`-only).
+- **Frontend** (`WeatherRow.tsx` modified, new `lib/useWeather.ts`) — written, type-checks clean, **not committed**.
+
+Next session: push the migration, commit + push the frontend/function source, deploy, verify live weather renders for both guests and signed-in users, and confirm the cron job actually fires after ~30 min (check `cron.job_run_details`).
+
+### Known issues / next round (explicitly deferred — "the admin section")
+
+Found by the same code review, not yet started, planned as the next round of work per the user:
+
+1. **New admin accounts get routed into the guest onboarding wizard instead of `/admin`.** `App.tsx`'s `needsOnboarding` check is just `!profile.cottageNumber` with no admin exemption — an admin account (created directly via the Supabase Admin API, no cottage number) lands in the 3-step renter onboarding flow after login instead of going to the admin console.
+2. **Several admin-console screens silently swallow write errors.** `AdminAlertsPage`, `AdminAmenitiesPage`, and `AdminEventsPage` all discard the `error` Supabase returns on create/update/delete and proceed as if it succeeded (closing forms, updating local state optimistically). If an admin's session is stale or the network drops, the UI shows success while nothing was actually saved.
+3. Also still open, lower priority: **Content pages not built** — Menu items (Arrival Guide, Renter's Guide, WiFi, Property Rules, FAQ) tap to nothing; `content_pages` table is seeded but no detail screens exist.
+4. Unverified, carried over from before the cutover: whether a user who clears `localStorage` but still holds a live Supabase session cookie is routed correctly. `RequireAuth` redirects to `/welcome` only when `!session && !isGuest`, which looks correct by inspection but was never actually exercised end-to-end.
+
+### Deploying
 
 ```bash
-cd "/Users/rallen/Documents/Claude/Projects/Rocky Coast Guide/Rocky Coast Guide/app"
-vercel --prod          # normal deploy (uses build cache)
-vercel --prod --force  # force full rebuild (use when env vars change)
+cd /Users/rallen/Documents/Claude/Projects/rocky-coast-labs
+vercel deploy --prod         # remote build — required, see the sensitive-env-var gotcha above
 ```
-
-The `.vercel/project.json` is inside `app/` and points to project ID `prj_8Y6MvpbBi4Ln0ohgPZrQkQ6b5t0n`.
-
-**Important:** Never put the Supabase personal access token or any secret in this file — GitHub push protection will block the push.
+Do **not** `vercel build` locally then `vercel deploy --prebuilt` for this project — see Infrastructure notes above for why.
 
 Node version constraint: **Node v20.10.0** — use `vite@5` (not v6+).
 
