@@ -11,20 +11,9 @@ function dayTag(dateStr: string): { label: string; style: 'today' | 'tomorrow' |
   return { label: format(d, 'EEEE'), style: 'future' }
 }
 
-// Static fallback shown when Supabase has no data yet
-const STATIC_EVENTS: Event[] = [
-  { id: 's1', title: 'Annual Meeting', date: new Date(Date.now() + 86400000).toISOString().slice(0,10), time_start: '10:00', time_end: '11:00', is_onsite: true, venue: 'Barn', distance_miles: null, city: null, category: 'community' },
-  { id: 's2', title: 'Lobster Rock', date: new Date().toISOString().slice(0,10), time_start: '15:00', time_end: '18:00', is_onsite: false, venue: null, distance_miles: 19, city: 'Old Orchard Beach', category: 'food' },
-  { id: 's3', title: 'Game Night', date: new Date(Date.now() + 86400000).toISOString().slice(0,10), time_start: '20:00', time_end: '22:00', is_onsite: true, venue: 'Barn', distance_miles: null, city: null, category: 'community' },
-  { id: 's4', title: 'Open Air Arts Gallery', date: new Date(Date.now() + 86400000).toISOString().slice(0,10), time_start: '09:00', time_end: '15:00', is_onsite: false, venue: null, distance_miles: 16, city: 'Saco', category: 'arts' },
-  { id: 's5', title: "Father's Day Celebration", date: new Date(Date.now() + 2 * 86400000).toISOString().slice(0,10), time_start: '12:00', time_end: '14:00', is_onsite: true, venue: 'Pavilion', distance_miles: null, city: null, category: 'community' },
-  { id: 's6', title: 'York Car Show', date: new Date(Date.now() + 2 * 86400000).toISOString().slice(0,10), time_start: '08:00', time_end: null, is_onsite: false, venue: null, distance_miles: 12, city: 'York', category: 'auto' },
-]
-
 export function EventsScroll() {
   const navigate = useNavigate()
-  const { events: liveEvents, loading } = useUpcomingEvents(6)
-  const events = (!loading && liveEvents.length > 0) ? liveEvents : STATIC_EVENTS
+  const { events, loading } = useUpcomingEvents(6)
 
   return (
     <div>
@@ -43,9 +32,13 @@ export function EventsScroll() {
         className="flex gap-[9px] overflow-x-auto scrollbar-hide -mx-5 px-5 pb-1"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {events.map((event) => (
-          <EventCard key={event.id} event={event} />
-        ))}
+        {!loading && events.length === 0 ? (
+          <p className="font-body text-white/55 text-[12px] py-2">No upcoming events scheduled.</p>
+        ) : (
+          events.map((event) => (
+            <EventCard key={event.id} event={event} />
+          ))
+        )}
         <ViewAllCard onClick={() => navigate('/events')} />
       </div>
     </div>

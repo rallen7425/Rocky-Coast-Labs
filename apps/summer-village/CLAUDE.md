@@ -6,7 +6,9 @@
 
 **2026-08-23: Monorepo cutover completed.** This app now deploys from the shared `rocky-coast-labs` Turborepo (`apps/summer-village`), not the old standalone `Rocky-Coast-Guides` repo. Same Vercel project (`prj_8Y6MvpbBi4Ln0ohgPZrQkQ6b5t0n`), same live URL — just repointed. See the Infrastructure table below and `rocky-coast-labs/ARCHITECTURE.md` for full detail. The standalone repo is being kept as a dormant fallback for now, not yet archived — archive it once this cutover has proven stable over a few real sessions.
 
-A code review was then run against the full app (not just the migration diff) and found real bugs, some already fixed and deployed today, some fixed in code but **not yet pushed/deployed** — see the three status buckets below before assuming what's actually live.
+A code review was then run against the full app (not just the migration diff) and found real bugs, some already fixed and deployed today, some fixed in code but **not yet pushed/deployed** — see the status buckets below before assuming what's actually live.
+
+**⚠️ 2026-08-23 (later same day): the live domain was found stuck 44 days stale.** `https://summer-village-life.vercel.app` was pinned to a deployment from July 10 and had not moved across at least 6 subsequent `vercel deploy --prod` runs earlier today — meaning every "live in production" claim below written before this was caught should be treated as unverified for anything shipped after July 10, regardless of what git/deploy history says. Root cause and the fix are in the "🔴 Fixed this session" section and the Deploying section below. **Any future "live in production" claim in this file must be backed by the curl asset-hash check in the Deploying section — not just a successful deploy command.**
 
 ### Infrastructure
 
@@ -24,30 +26,23 @@ A code review was then run against the full app (not just the migration diff) an
 - Turbo 2.x needs `packageManager` set in the monorepo root `package.json` to resolve the npm workspace during a Vercel build — already fixed there, don't remove it.
 - Also: this app has a PWA service worker that aggressively caches assets. If a fix doesn't appear to be live after a deploy, check for a stale service worker before assuming the deploy failed (`navigator.serviceWorker.getRegistrations()` + `caches.keys()` in devtools, unregister/clear, hard reload).
 
-### ✅ Live in production right now
+### ✅ Live in production right now (verified against the real domain via the curl asset-hash check)
 
-- The monorepo cutover itself — `village_summer` schema targeting, real seeded data rendering (alerts, events, weather placeholder, amenities).
-- Alerts Realtime subscription fix — was hardcoded to `schema: 'public'` (a leftover from before the schema migration), so live alert updates silently stopped working for already-open sessions. Fixed and verified live.
-- The `village_summer.*` admin-role RLS policies now check `app_metadata` instead of `user_metadata` (this migration was pushed to the database directly) — see the security item below for why, and note the **code** side of this fix is not deployed yet.
+- The monorepo cutover itself — `village_summer` schema targeting, real seeded data rendering (alerts, events, weather, amenities).
+- Alerts Realtime subscription fix — was hardcoded to `schema: 'public'` (a leftover from before the schema migration), so live alert updates silently stopped working for already-open sessions.
+- The `village_summer.*` admin-role RLS policies check `app_metadata` instead of `user_metadata`, and the frontend (`auth.tsx`) reads `app_metadata` and can no longer write `role` at all — both the database and code sides of the privilege-escalation fix (`4db57d4`) are deployed.
+- Village/Events pages pull real data instead of hardcoded fallbacks (`99d8ad0`) — `VillagePage` queries `amenities`, `/events` queries `events` live. `AdminEventsPage`'s "(~null mi)" text bug and `EventsScroll`'s real-`0`-mile-treated-as-missing bug are both fixed.
+- Live weather/tide on the Home screen (`ac3590f`) — `WeatherRow` reads real data from `weather_cache` via `useWeather()`.
+- Guests (anon) can read `amenities` and `events`, not just `authenticated` users — closes the gap described in the section below.
+- `EventsScroll`'s hardcoded `STATIC_EVENTS` fake-June-2026-event fallback is removed; a genuinely empty result now shows "No upcoming events scheduled." instead of silently substituting fake data.
 
-### 🟡 Fixed in code, committed locally, but NOT pushed to GitHub or deployed
+**After the `4db57d4` deploy, the admin account needs to sign out and back in** — a login session issued before the `app_metadata` change won't reflect it until refreshed.
 
-Two commits sit on `main` ahead of `origin/main` — push and `vercel deploy --prod` them before starting new work, so the next session isn't debugging against a stale production site:
+### 🔴 Fixed this session — stale-domain bug and the anon-access gap it hid
 
-1. **`4db57d4` — Security fix (privilege escalation).** The code review found that admin status was read from `user_metadata`, which any signed-in user can self-edit via `supabase.auth.updateUser()` regardless of what the app's own UI allows — meaning any renter could grant themselves admin. The **database** side is already live (RLS policies + an `app_metadata` backfill for the existing admin account were pushed). The **code** side (`auth.tsx` now reads `app_metadata` and can no longer write `role` at all) is committed but not deployed — until it is, the actual exploit is already closed at the RLS layer, but the deployed frontend still trusts the old field for its own `/admin` route guard, which is a smaller but still real gap (client-side spoofing could show the admin UI shell, though backend writes would fail RLS either way).
-2. **`99d8ad0` — Village/Events pages showed fake, hardcoded data; two display bugs.** `VillagePage` never queried the `amenities` table (admin status changes never reached guests) and the full `/events` tab showed a hardcoded static list from June 2026 instead of live data. Both now pull from Supabase via new `useAmenities()`/generalized `useUpcomingEvents()` hooks. Also fixed: `AdminEventsPage` showing the literal text "(~null mi)" for events with no distance entered, and `EventsScroll`'s distance badge treating a real `0` mile distance as missing.
+**The live domain was 44 days stale.** `https://summer-village-life.vercel.app` was pinned to a July-10 deployment and didn't move across at least 6 `vercel deploy --prod` runs earlier today — likely because an earlier `vercel rollback` (see the Infrastructure gotchas above) pinned that specific domain alias in a way that stopped it auto-tracking `main`. Root cause isn't fully confirmed since Project Settings → Domains isn't CLI-reachable — **next session should check the Vercel dashboard** (`summer-village-life` project → Settings → Domains → is `summer-village-life.vercel.app` tracking the Production branch, or pinned?) and fix it there if possible. Until then, the Deploying section below has a mandatory verification step so this can't silently recur.
 
-**After deploying #1, the admin account needs to sign out and back in** — the current login session was issued before the `app_metadata` change and won't reflect it until refreshed.
-
-### 🟠 In progress, not committed — live weather/tide feature
-
-Per the long-standing known issue below, `weather_cache` has never been populated — `WeatherRow` showed hardcoded placeholder values. Built today, not finished:
-
-- **Edge Function `update-weather-cache`** (`supabase/functions/update-weather-cache/index.ts`) — already deployed directly to Supabase (`supabase functions deploy`, independent of the Vercel/git pipeline) and manually tested successfully (wrote a real row: 66°F from NWS station KSFM/Sanford, tide predictions from NOAA station 8419317/Wells-Webhannet River). Not yet scheduled to run automatically.
-- **Migration `20260823000003_village_summer_weather_cron.sql`** — written but **not pushed to the database**. It enables `pg_cron`/`pg_net` on the shared project, schedules the function every 30 min, and widens `weather_cache` read access to `anon` (guests see weather today via the old hardcoded values; without this grant they'd see blanks once real data replaces the hardcoding, since the table was previously `authenticated`-only).
-- **Frontend** (`WeatherRow.tsx` modified, new `lib/useWeather.ts`) — written, type-checks clean, **not committed**.
-
-Next session: push the migration, commit + push the frontend/function source, deploy, verify live weather renders for both guests and signed-in users, and confirm the cron job actually fires after ~30 min (check `cron.job_run_details`).
+**That staleness hid a second bug**: `village_summer.amenities` and `village_summer.events` were never granted `anon` SELECT (only `alerts` had it from the base schema; `weather_cache` was fixed earlier this session). Guests hitting `/village` saw an empty Pools/Amenities list, and guests hitting `/events` saw "No events match this filter." Migration `20260823000004_village_summer_anon_amenities_events.sql` grants both. `EventsScroll`'s `STATIC_EVENTS` fallback (see above) had been silently masking the `events` half of this on the Home screen the whole time by substituting fake data whenever the live query returned zero rows — it never returned zero rows to a guest by chance, it always did, because guests could never actually read the table.
 
 ### Known issues / next round (explicitly deferred — "the admin section")
 
@@ -62,9 +57,16 @@ Found by the same code review, not yet started, planned as the next round of wor
 
 ```bash
 cd /Users/rallen/Documents/Claude/Projects/rocky-coast-labs
-vercel deploy --prod         # remote build — required, see the sensitive-env-var gotcha above
+DEPLOY_URL=$(vercel deploy --prod)   # remote build — required, see the sensitive-env-var gotcha above
+vercel promote "$DEPLOY_URL"         # reassign ALL production domains — see the stale-alias gotcha below
 ```
 Do **not** `vercel build` locally then `vercel deploy --prebuilt` for this project — see Infrastructure notes above for why.
+
+**Mandatory post-deploy check — the live domain has silently failed to update before (see "Fixed this session" above).** Never trust the deploy command's own success output:
+```bash
+curl -s https://summer-village-life.vercel.app/ | grep -o 'assets/index-[a-zA-Z0-9]*\.js'
+```
+Compare the hash against the asset filename in the just-completed build's own output. If they don't match, `vercel promote` didn't take effect — fall back to `vercel alias set "$DEPLOY_URL" summer-village-life.vercel.app` (confirmed to work) and re-check.
 
 Node version constraint: **Node v20.10.0** — use `vite@5` (not v6+).
 
