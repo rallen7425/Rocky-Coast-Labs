@@ -1,47 +1,44 @@
 import { useState } from 'react'
+import { format, isToday, isTomorrow, isSaturday, isSunday, nextSaturday, nextSunday, previousSaturday, parseISO } from 'date-fns'
 import { StatusBar } from '../../components/StatusBar'
 import { PageHeader } from '../../components/PageHeader'
 import { SectionLabel } from '../../components/SectionLabel'
+import { useUpcomingEvents, type Event } from '../../lib/useEvents'
+import { formatTime } from '../../lib/format'
 import barnPhoto from '../../assets/sv-barn.jpg'
 
 type Filter = 'All' | 'On-Site' | 'Nearby' | 'This Weekend'
 
-interface Event {
-  id: string
-  title: string
-  timeStart: string
-  timeEnd?: string
-  isOnsite: boolean
-  venue: string
-  distance?: string
-  date: string
-  dateLabel: string
+const PAGE_GRADIENT = 'linear-gradient(180deg, rgba(8,18,36,0.92) 0%, rgba(8,18,36,0.78) 30%, rgba(8,18,36,0.72) 60%, rgba(8,18,36,0.92) 100%)'
+
+function dateLabel(dateStr: string): string {
+  const d = parseISO(dateStr)
+  if (isToday(d)) return `Today — ${format(d, 'EEEE, MMM d')}`
+  if (isTomorrow(d)) return `Tomorrow — ${format(d, 'EEEE, MMM d')}`
+  return format(d, 'EEEE, MMM d')
 }
 
-const EVENTS: Event[] = [
-  { id: '1', title: 'Lobster Rock', timeStart: '3:00', timeEnd: '6:00 PM', isOnsite: false, venue: 'Veterans Memorial Park, Old Orchard Beach', distance: '~19 mi', date: '2026-06-19', dateLabel: 'Today — Friday, Jun 19' },
-  { id: '2', title: 'Annual Meeting', timeStart: '10:00', timeEnd: '11:00 AM', isOnsite: true, venue: 'Barn', date: '2026-06-20', dateLabel: 'Tomorrow — Saturday, Jun 20' },
-  { id: '3', title: '55th Open Air Arts Gallery', timeStart: '9:00 AM', timeEnd: '3:00 PM', isOnsite: false, venue: 'Main St, Saco', distance: '~16 mi', date: '2026-06-20', dateLabel: 'Tomorrow — Saturday, Jun 20' },
-  { id: '4', title: 'Game Night', timeStart: '8:00', timeEnd: '10:00 PM', isOnsite: true, venue: 'Barn', date: '2026-06-20', dateLabel: 'Tomorrow — Saturday, Jun 20' },
-  { id: '5', title: '8th Annual York Car Show', timeStart: '8:00 AM', isOnsite: false, venue: '1 Robert Stevens Dr, York', distance: '~12 mi', date: '2026-06-21', dateLabel: "Sunday, Jun 21 — Father's Day" },
-  { id: '6', title: "Father's Day Celebration", timeStart: '12:00', timeEnd: '2:00 PM', isOnsite: true, venue: 'Pavilion', date: '2026-06-21', dateLabel: "Sunday, Jun 21 — Father's Day" },
-]
-
-const PAGE_GRADIENT = 'linear-gradient(180deg, rgba(8,18,36,0.92) 0%, rgba(8,18,36,0.78) 30%, rgba(8,18,36,0.72) 60%, rgba(8,18,36,0.92) 100%)'
+function isThisWeekend(dateStr: string): boolean {
+  const d = parseISO(dateStr)
+  const now = new Date()
+  const weekendStart = isSaturday(now) ? now : isSunday(now) ? previousSaturday(now) : nextSaturday(now)
+  const weekendEnd = isSunday(now) ? now : isSaturday(now) ? nextSunday(now) : nextSunday(nextSaturday(now))
+  return d >= new Date(weekendStart.toDateString()) && d <= new Date(weekendEnd.toDateString())
+}
 
 export function EventsPage() {
   const [activeFilter, setActiveFilter] = useState<Filter>('All')
+  const { events, loading } = useUpcomingEvents(50, 60)
 
-  const filtered = EVENTS.filter(e => {
-    if (activeFilter === 'All') return true
-    if (activeFilter === 'On-Site') return e.isOnsite
-    if (activeFilter === 'Nearby') return !e.isOnsite
-    if (activeFilter === 'This Weekend') return ['2026-06-20', '2026-06-21'].includes(e.date)
+  const filtered = events.filter(e => {
+    if (activeFilter === 'On-Site') return e.is_onsite
+    if (activeFilter === 'Nearby') return !e.is_onsite
+    if (activeFilter === 'This Weekend') return isThisWeekend(e.date)
     return true
   })
 
   const grouped = filtered.reduce<Record<string, { label: string; events: Event[] }>>((acc, e) => {
-    if (!acc[e.date]) acc[e.date] = { label: e.dateLabel, events: [] }
+    if (!acc[e.date]) acc[e.date] = { label: dateLabel(e.date), events: [] }
     acc[e.date].events.push(e)
     return acc
   }, {})
@@ -53,7 +50,7 @@ export function EventsPage() {
 
       <div className="relative z-10 flex flex-col min-h-screen scrollbar-hide overflow-y-auto pb-28">
         <StatusBar />
-        <PageHeader title="Events" subtitle="This weekend at Summer Village" />
+        <PageHeader title="Events" subtitle="What's happening at Summer Village" />
 
         <div className="flex flex-col gap-2.5 px-5 pt-3.5">
 
@@ -97,7 +94,7 @@ export function EventsPage() {
             </div>
           ))}
 
-          {filtered.length === 0 && (
+          {!loading && filtered.length === 0 && (
             <p className="font-body text-white/55 text-[13px] text-center py-8">
               No events match this filter.
             </p>
@@ -109,6 +106,8 @@ export function EventsPage() {
 }
 
 function EventListItem({ event, last }: { event: Event; last: boolean }) {
+  const timeStr = formatTime(event.time_start) + (event.time_end ? `–${formatTime(event.time_end)}` : '')
+
   return (
     <div
       className="flex items-start gap-3 px-4 py-3.5"
@@ -118,7 +117,7 @@ function EventListItem({ event, last }: { event: Event; last: boolean }) {
       <div className="mt-[5px] flex-shrink-0">
         <div
           className="w-2 h-2 rounded-full"
-          style={{ background: event.isOnsite ? '#a9c9f3' : '#f0a500' }}
+          style={{ background: event.is_onsite ? '#a9c9f3' : '#f0a500' }}
         />
       </div>
 
@@ -126,19 +125,19 @@ function EventListItem({ event, last }: { event: Event; last: boolean }) {
       <div className="flex-1">
         <div className="font-display font-semibold text-white text-[14px]">{event.title}</div>
         <div className="font-body text-white/55 mt-0.5" style={{ fontSize: 11 }}>
-          {event.timeStart}{event.timeEnd ? `–${event.timeEnd}` : ''}
-          {!event.isOnsite && event.venue && ` · ${event.venue}`}
+          {timeStr}
+          {!event.is_onsite && event.city && ` · ${event.city}`}
         </div>
       </div>
 
       {/* Location badge */}
-      {event.isOnsite ? (
+      {event.is_onsite ? (
         <span className="font-body font-semibold text-[10px] mt-0.5 flex-shrink-0" style={{ color: '#7ee8a2' }}>
-          {event.venue}
+          {event.venue ?? 'On-site'}
         </span>
       ) : (
         <span className="font-body font-semibold text-[10px] mt-0.5 flex-shrink-0" style={{ color: '#f0a500' }}>
-          {event.distance}
+          {event.distance_miles != null ? `~${event.distance_miles} mi` : ''}
         </span>
       )}
     </div>

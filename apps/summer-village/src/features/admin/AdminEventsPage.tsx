@@ -195,7 +195,7 @@ export function AdminEventsPage() {
                     <div className="font-body text-gray-500 text-[12px] mt-0.5">
                       {format(parseISO(ev.date), 'EEE, MMM d')}
                       {ev.time_start && ` · ${ev.time_start.slice(0,5)}`}
-                      {ev.is_onsite ? ` · ${ev.venue ?? 'On-site'}` : ` · ${ev.city ?? ''} (~${ev.distance_miles} mi)`}
+                      {ev.is_onsite ? ` · ${ev.venue ?? 'On-site'}` : ` · ${ev.city ?? ''}${ev.distance_miles != null ? ` (~${ev.distance_miles} mi)` : ''}`}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">

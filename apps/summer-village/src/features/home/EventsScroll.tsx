@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Clock, MapPin, ArrowRight } from 'lucide-react'
 import { useUpcomingEvents, type Event } from '../../lib/useEvents'
+import { formatTime } from '../../lib/format'
 import { format, isToday, isTomorrow, parseISO } from 'date-fns'
 
 function dayTag(dateStr: string): { label: string; style: 'today' | 'tomorrow' | 'future' } {
@@ -8,14 +9,6 @@ function dayTag(dateStr: string): { label: string; style: 'today' | 'tomorrow' |
   if (isToday(d)) return { label: 'Today', style: 'today' }
   if (isTomorrow(d)) return { label: 'Tomorrow', style: 'tomorrow' }
   return { label: format(d, 'EEEE'), style: 'future' }
-}
-
-function formatTime(t: string | null): string {
-  if (!t) return ''
-  const [h, m] = t.split(':').map(Number)
-  const suffix = h >= 12 ? 'PM' : 'AM'
-  const hour = h % 12 || 12
-  return `${hour}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
 // Static fallback shown when Supabase has no data yet
@@ -98,7 +91,7 @@ function EventCard({ event }: { event: Event }) {
             className="font-body font-semibold px-1.5 py-0.5 rounded-[10px]"
             style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.12)' }}
           >
-            {event.distance_miles ? `~${event.distance_miles} mi` : ''}
+            {event.distance_miles != null ? `~${event.distance_miles} mi` : ''}
           </span>
         )}
       </div>

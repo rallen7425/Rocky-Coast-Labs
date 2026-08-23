@@ -14,14 +14,14 @@ export interface Event {
   category: string | null
 }
 
-export function useUpcomingEvents(limit = 6) {
+export function useUpcomingEvents(limit = 6, days = 7) {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let mounted = true
     const today = new Date().toISOString().slice(0, 10)
-    const inSevenDays = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
+    const windowEnd = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)
 
     async function fetchEvents() {
       const { data, error } = await supabase
@@ -29,7 +29,7 @@ export function useUpcomingEvents(limit = 6) {
         .select('id, title, date, time_start, time_end, is_onsite, venue, distance_miles, city, category')
         .eq('is_active', true)
         .gte('date', today)
-        .lte('date', inSevenDays)
+        .lte('date', windowEnd)
         .order('date')
         .order('time_start')
         .limit(limit)
@@ -41,7 +41,7 @@ export function useUpcomingEvents(limit = 6) {
 
     fetchEvents()
     return () => { mounted = false }
-  }, [limit])
+  }, [limit, days])
 
   return { events, loading }
 }

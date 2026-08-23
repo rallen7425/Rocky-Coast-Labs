@@ -1,16 +1,48 @@
-import { useState } from 'react'
+import { useState, ReactNode } from 'react'
 import { Dumbbell, Flame, Gamepad2, Calendar } from 'lucide-react'
 import { StatusBar } from '../../components/StatusBar'
 import { PageHeader } from '../../components/PageHeader'
 import { SectionLabel } from '../../components/SectionLabel'
 import { RowCard, RowItem, StatusBadge } from '../../components/RowCard'
+import { useAmenities, type Amenity } from '../../lib/useAmenities'
+import { formatTime } from '../../lib/format'
 import barnPhoto from '../../assets/sv-barn.jpg'
 import mapThumb from '../../assets/sv-map-thumb.png'
 
 const POOL_GRADIENT = 'linear-gradient(180deg, rgba(8,18,36,0.92) 0%, rgba(8,18,36,0.78) 30%, rgba(8,18,36,0.72) 60%, rgba(8,18,36,0.92) 100%)'
 
+const ICONS: Record<string, ReactNode> = {
+  'adult pool': '🏊',
+  'family pool': '🌊',
+  'pavilion pool': '💦',
+  'pickleball courts': '🏓',
+  'fitness center': <Dumbbell size={17} />,
+  'sauna': <Flame size={17} />,
+  'game room': <Gamepad2 size={17} />,
+  'tennis courts': '🎾',
+  'basketball courts': '🏀',
+  'playground': '🛝',
+  'pavilion': '🏛️',
+}
+
+function iconFor(amenity: Amenity) {
+  return ICONS[amenity.name.toLowerCase()] ?? (amenity.category === 'pool' ? '🏊' : '🏛️')
+}
+
+function amenityMeta(amenity: Amenity): string {
+  const parts: string[] = []
+  if (amenity.hours_open && amenity.hours_close) {
+    parts.push(`${formatTime(amenity.hours_open)}–${formatTime(amenity.hours_close)}`)
+  }
+  if (amenity.age_restriction) parts.push(amenity.age_restriction)
+  if (amenity.location) parts.push(amenity.location)
+  if (amenity.notes) parts.push(amenity.notes)
+  return parts.join(' · ') || (amenity.category === 'pool' ? 'Open daily' : '')
+}
+
 export function VillagePage() {
   const [mapExpanded, setMapExpanded] = useState(false)
+  const { pools, other, loading } = useAmenities()
 
   return (
     <>
@@ -50,44 +82,40 @@ export function VillagePage() {
             </div>
 
             {/* Pools */}
-            <div>
-              <SectionLabel>Pools</SectionLabel>
-              <RowCard>
-                <RowItem
-                  icon="🏊"
-                  title="Adult Pool"
-                  meta="8:00am–10:00pm · Ages 16 and up"
-                  right={<StatusBadge status="open" />}
-                />
-                <RowItem
-                  icon="🌊"
-                  title={<>Family Pool <span className="font-normal text-white/45" style={{ fontSize: 10 }}>(Heated)</span></>}
-                  meta="8:00am–10:00pm · All ages"
-                  right={<StatusBadge status="open" />}
-                />
-                <RowItem
-                  icon="💦"
-                  title={<>Pavilion Pool <span className="font-normal text-white/45" style={{ fontSize: 10 }}>(Not Heated)</span></>}
-                  meta="Temporarily closed"
-                  right={<StatusBadge status="maintenance" />}
-                />
-              </RowCard>
-            </div>
+            {!loading && pools.length > 0 && (
+              <div>
+                <SectionLabel>Pools</SectionLabel>
+                <RowCard>
+                  {pools.map(pool => (
+                    <RowItem
+                      key={pool.id}
+                      icon={iconFor(pool)}
+                      title={pool.name}
+                      meta={amenityMeta(pool)}
+                      right={<StatusBadge status={pool.status} />}
+                    />
+                  ))}
+                </RowCard>
+              </div>
+            )}
 
             {/* Amenities */}
-            <div>
-              <SectionLabel>Amenities</SectionLabel>
-              <RowCard>
-                <RowItem icon="🏓" title="Pickleball Courts" meta="6 courts · Open daily" />
-                <RowItem icon={<Dumbbell size={17} />} title="Fitness Center" meta="Open 24 hours · Downstairs at the Barn" />
-                <RowItem icon={<Flame size={17} />} title="Sauna" meta="8:00am–8:00pm · Downstairs at the Barn" />
-                <RowItem icon={<Gamepad2 size={17} />} title="Game Room" meta="10:00am–10:00pm · Upstairs at the Barn" />
-                <RowItem icon="🎾" title="Tennis Courts" meta="Open daily" />
-                <RowItem icon="🏀" title="Basketball Courts" meta="Open daily" />
-                <RowItem icon="🛝" title="Playground" meta="Open daily" />
-                <RowItem icon="🏛️" title="Pavilion" meta="Events, gatherings & barn activities" />
-              </RowCard>
-            </div>
+            {!loading && other.length > 0 && (
+              <div>
+                <SectionLabel>Amenities</SectionLabel>
+                <RowCard>
+                  {other.map(amenity => (
+                    <RowItem
+                      key={amenity.id}
+                      icon={iconFor(amenity)}
+                      title={amenity.name}
+                      meta={amenityMeta(amenity)}
+                      right={amenity.status !== 'open' ? <StatusBadge status={amenity.status} /> : undefined}
+                    />
+                  ))}
+                </RowCard>
+              </div>
+            )}
 
             {/* Schedules */}
             <div>
