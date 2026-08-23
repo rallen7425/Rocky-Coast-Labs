@@ -12,7 +12,7 @@ Each app gets its own Postgres schema, never `public`:
 |---|---|---|
 | Sonic Radar | `sonicradar` | Live in production — migrated 2026-07-10 |
 | Distilled | `distilled` | Live in production — migrated 2026-07-10 |
-| Rocky Coast Guide / Summer Village | `village_summer` (`rockycoast_core` reserved, unused) | Live in production — migrated 2026-07-10 |
+| Rocky Coast Guide / Summer Village | `village_summer` (`rockycoast_core` reserved, unused) | Live in production — migrated 2026-07-10; deploy source cut over to this monorepo 2026-08-23 |
 | PM ReArchitected | `pm_rearchitected` | Live in production — AI Glossary migrated 2026-07-23 |
 | Is It Offensive? | — | No database; doesn't need one |
 | Portfolio tracking | `_meta` | Live |
@@ -66,7 +66,11 @@ GET {SUPABASE_URL}/rest/v1/apps   (Accept-Profile: _meta header, anon key)
 
 The one app family with actual shared code — Rocky Coast Guide (standalone regional app) and per-village apps (Summer Village Guide, future Community 2) share regional content and UI. Structured as a Turborepo, each app still deploys as its own independent Vercel project (Root Directory pointed at the specific `apps/*` folder).
 
-**Current status: scaffold only, and now stale** (created 2026-07-10, before the standalone repo's own cutover). `apps/summer-village` is a snapshot of the standalone app taken *before* it was migrated to `village_summer` — it still has the old code pointing at the retired standalone Supabase project. The actual migrated, deployed code lives in the standalone repo (`rallen7425/Rocky-Coast-Guides`), not here. `packages/rocky-coast-core`, `packages/rocky-coast-auth`, `packages/ui` are still empty placeholders. Before doing anything with this monorepo in a future session, re-sync `apps/summer-village` from the standalone repo's current state first. The live `summer-village-life.vercel.app` deployment runs from the standalone repo, not from this monorepo.
+**Current status: live and deployed from here** (cut over 2026-08-23). `apps/summer-village` was re-synced from the standalone repo's current state, re-pointed at `village_summer`, and is now the actual deploy source: the Vercel project `summer-village-life` has its Git integration connected to this repo (`rallen7425/Rocky-Coast-Labs`), Root Directory set to `apps/summer-village`. The live `summer-village-life.vercel.app` deployment now runs from this monorepo, verified rendering real `village_summer` data. The standalone repo (`rallen7425/Rocky-Coast-Guides`) is being kept as a dormant fallback for now, not yet archived. `packages/rocky-coast-core`, `packages/rocky-coast-auth`, `packages/ui` are still empty placeholders — deferred until a second village app exists (unchanged from before).
+
+Two gotchas hit during the cutover, worth knowing before touching this app's Vercel config again:
+- Vercel's "sensitive" env vars (used here for `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`) are write-only and only resolvable during Vercel's own **remote** build — a local `vercel build` (even `--prod`) silently bakes in empty values instead of erroring. Always deploy with `vercel deploy --prod` (no `--prebuilt`) for this project, not a local build-then-deploy.
+- Turbo 2.x needs a `packageManager` field in the root `package.json` to resolve the npm workspace during Vercel's build — without it, `turbo run build` fails with "Could not resolve workspace." Already fixed (see root `package.json`).
 
 Other apps (PM ReArchitected, Distilled, Sonic Radar, Is It Offensive) are standalone — no shared code, don't force them into this monorepo.
 
