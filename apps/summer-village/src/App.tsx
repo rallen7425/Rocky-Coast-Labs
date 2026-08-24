@@ -36,6 +36,7 @@ function AppShell() {
         <Route path="/events" element={<EventsPage />} />
         <Route path="/events/:id" element={<EventDetailPage />} />
         <Route path="/guide" element={<GuidePage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <FloatingNav onMenuOpen={() => setMenuOpen(true)} />
       <MenuDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -52,6 +53,7 @@ function AdminShell() {
         <Route path="announcements" element={<AdminAnnouncementsPage />} />
         <Route path="events" element={<AdminEventsPage />} />
         <Route path="amenities" element={<AdminAmenitiesPage />} />
+        <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </AdminLayout>
   )

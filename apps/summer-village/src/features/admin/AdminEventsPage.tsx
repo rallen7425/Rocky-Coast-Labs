@@ -77,7 +77,8 @@ export function AdminEventsPage() {
   const [editingRecurrenceId, setEditingRecurrenceId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(BLANK)
-  const { mutate, saving, error, setError } = useSupabaseMutation()
+  const [submitting, setSubmitting] = useState(false)
+  const { mutate, error, setError } = useSupabaseMutation()
 
   const load = async () => {
     const { data } = await supabase
@@ -116,7 +117,16 @@ export function AdminEventsPage() {
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
+    if (submitting) return
+    setSubmitting(true)
+    try {
+      await saveInner()
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
+  const saveInner = async () => {
     const basePayload = {
       title: form.title,
       description: form.description || null,
@@ -324,8 +334,8 @@ export function AdminEventsPage() {
               <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2.5 rounded-xl font-body text-[14px] text-gray-600 border border-gray-200 hover:bg-gray-50">
                 Cancel
               </button>
-              <button type="submit" disabled={saving} className="px-6 py-2.5 rounded-xl font-body font-semibold text-[14px] text-white disabled:opacity-60" style={{ background: '#103457' }}>
-                {saving ? 'Saving…' : editId ? 'Save Changes' : 'Create Event'}
+              <button type="submit" disabled={submitting} className="px-6 py-2.5 rounded-xl font-body font-semibold text-[14px] text-white disabled:opacity-60" style={{ background: '#103457' }}>
+                {submitting ? 'Saving…' : editId ? 'Save Changes' : 'Create Event'}
               </button>
             </div>
           </form>
