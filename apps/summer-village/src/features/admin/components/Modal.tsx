@@ -10,7 +10,13 @@ interface ModalProps {
 export function Modal({ title, onClose, children }: ModalProps) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto"
+      // Always top-aligned, never centered: a vertically-centered flex item
+      // taller than the viewport can leave its top edge unscrollable and
+      // inaccessible in some browsers (a well-known flexbox overflow quirk)
+      // -- the Amenities form is tall enough to hit this and hide the Name
+      // field entirely, blocking creation. Top-aligned + scrollable is the
+      // one layout guaranteed to keep the whole form reachable.
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
