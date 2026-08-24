@@ -10,6 +10,8 @@ A code review was then run against the full app (not just the migration diff) an
 
 **⚠️ 2026-08-23 (later same day): the live domain was found stuck 44 days stale.** `https://summer-village-life.vercel.app` was pinned to a deployment from July 10 and had not moved across at least 6 subsequent `vercel deploy --prod` runs earlier today — meaning every "live in production" claim below written before this was caught should be treated as unverified for anything shipped after July 10, regardless of what git/deploy history says. Root cause and the fix are in the "🔴 Fixed this session" section and the Deploying section below. **Any future "live in production" claim in this file must be backed by the curl asset-hash check in the Deploying section — not just a successful deploy command.**
 
+**📅 2026-08-23 (same day, third session): Calendar/Announcements/Amenities admin build shipped.** Built and deployed the full feature set requested — a new Announcements banner system, a full "Manage Events & Activities" rewrite (real CRUD, simple recurrence, on/off-site location, detail pages), and a full Amenities rewrite (CRUD, parent/sub-amenity hierarchy, photo uploads, detail pages). Explicitly deferred per user decision: email-upload/web-link-import/AI-web-scan event ingestion — not built, schema left open for it later. See the "✅ Live in production" and "Pages & Component Inventory" sections below for what actually shipped; four new migrations (`20260823000005`–`20260823000009`, including a same-session fix for a `NOT NULL` constraint the new error handling caught immediately) and a new Supabase Storage bucket (`village-summer-amenity-photos`) went out with it. **Also closes "Known issue" #2 below** (admin write-error swallowing) — all four admin pages now use a shared `useSupabaseMutation` hook that surfaces failures instead of silently proceeding.
+
 ### Infrastructure
 
 | Resource | Detail |
@@ -35,6 +37,9 @@ A code review was then run against the full app (not just the migration diff) an
 - Live weather/tide on the Home screen (`ac3590f`) — `WeatherRow` reads real data from `weather_cache` via `useWeather()`.
 - Guests (anon) can read `amenities` and `events`, not just `authenticated` users — closes the gap described in the section below.
 - `EventsScroll`'s hardcoded `STATIC_EVENTS` fake-June-2026-event fallback is removed; a genuinely empty result now shows "No upcoming events scheduled." instead of silently substituting fake data.
+- **Announcements** — new admin page (`/admin/announcements`) and Home-screen banner (calmer/blue, stacks below the red `AlertBanner`, independently dismissible per-message), scheduled by a `starts_at`/`ends_at` window that defaults to "now until midnight tonight."
+- **Manage Events & Activities** — `AdminEventsPage` now shows *all* events by default (not just upcoming) with a real hard delete alongside hide/show, plus short/long description, all-day toggle, simple weekly recurrence (materializes one row per matching weekday up to an end date, sharing a `recurrence_id`), off-site `address`, and an optional web link. Guests get a new `/events/:id` detail page — the app's first routed detail page.
+- **Manage Amenities** — `AdminAmenitiesPage` went from status-only to full CRUD: hours, age restriction, rules, a parent/sub-amenity picker, long description, and photo upload. Guests get a `/amenities/:id` detail page and a unified list on `/village` (see the breaking UI change noted under `/village` below).
 
 **After the `4db57d4` deploy, the admin account needs to sign out and back in** — a login session issued before the `app_metadata` change won't reflect it until refreshed.
 
@@ -49,9 +54,10 @@ A code review was then run against the full app (not just the migration diff) an
 Found by the same code review, not yet started, planned as the next round of work per the user:
 
 1. **New admin accounts get routed into the guest onboarding wizard instead of `/admin`.** `App.tsx`'s `needsOnboarding` check is just `!profile.cottageNumber` with no admin exemption — an admin account (created directly via the Supabase Admin API, no cottage number) lands in the 3-step renter onboarding flow after login instead of going to the admin console.
-2. **Several admin-console screens silently swallow write errors.** `AdminAlertsPage`, `AdminAmenitiesPage`, and `AdminEventsPage` all discard the `error` Supabase returns on create/update/delete and proceed as if it succeeded (closing forms, updating local state optimistically). If an admin's session is stale or the network drops, the UI shows success while nothing was actually saved.
+2. ~~Several admin-console screens silently swallow write errors.~~ **Fixed 2026-08-23** — all four admin pages (`AdminAlertsPage`, `AdminAnnouncementsPage`, `AdminEventsPage`, `AdminAmenitiesPage`) now go through `apps/summer-village/src/features/admin/hooks/useSupabaseMutation.ts`, which always surfaces `{ error }` and refuses to let a caller treat a failed write as a success.
 3. Also still open, lower priority: **Content pages not built** — Menu items (Arrival Guide, Renter's Guide, WiFi, Property Rules, FAQ) tap to nothing; `content_pages` table is seeded but no detail screens exist.
 4. Unverified, carried over from before the cutover: whether a user who clears `localStorage` but still holds a live Supabase session cookie is routed correctly. `RequireAuth` redirects to `/welcome` only when `!session && !isGuest`, which looks correct by inspection but was never actually exercised end-to-end.
+5. **Deferred by explicit user decision (2026-08-23), not a bug**: the three AI-ish event-ingestion options (upload emails to extract events, import a web page's events, scan the web and propose nearby events for approval) were scoped out of the Calendar/Announcements/Amenities build. Core CRUD shipped; ingestion is a follow-on phase whenever it's prioritized.
 
 ### Deploying
 
@@ -88,11 +94,12 @@ The app gives renters and owners a single destination for community info, amenit
 - Phase 3: Expand the model to other resort communities; Rocky Coast Guide becomes a standalone Southern Maine travel app
 
 ### Admin site
-A separate React app (same repo, `/admin` route or separate Vercel deployment) where a property manager can:
-- Publish/dismiss emergency alerts
-- Create, edit, and delete events
-- Update amenity status (open/closed/maintenance) and hours
-- Manage content pages (FAQ, arrival guide, property rules, etc.)
+A separate React app (same repo, `/admin` route) where a property manager can:
+- Publish/dismiss emergency alerts (`/admin/alerts`)
+- Post scheduled announcements (`/admin/announcements`)
+- Create, edit, hide/show, and delete events, including simple weekly recurrence (`/admin/events`)
+- Create, edit, hide/show, and delete amenities — hours, status, sub-amenities, photos (`/admin/amenities`)
+- Manage content pages (FAQ, arrival guide, property rules, etc.) — not yet built, see Known Issues
 
 ---
 
@@ -229,25 +236,15 @@ The Menu tab opens a slide-in drawer from the left (75% screen width, white back
 
 1. **PropertyMap** — 180px tall card with embedded thumbnail (`/assets/sv-map-thumb.jpg`). "Full map →" expands to full-screen view of `/assets/sv-map-full.jpg`.
 
-2. **Pools** — list card, data from `amenities` table (category = 'pool')
-   - Adult Pool: 8am–10pm, ages 16+
-   - Family Pool (Heated): 8am–10pm
-   - Pavilion Pool (Not Heated): 8am–10pm
-   - Status badge: Open (green) / Maintenance (red) / Closed (red)
+2. **Amenities** — one unified list card, data from `amenities` table grouped by `parent_id` (top-level = `parent_id IS NULL`, each with its own sub-amenities nested directly beneath, indented). **Breaking change from the original MVP spec (2026-08-23)**: this replaced a hardcoded two-section Pools/Amenities split (`category = 'pool' | 'amenity'`) — that `category` column still exists with historical data but is no longer read or written anywhere; grouping is now generic and admin-configurable via the "Sub-amenity of" picker on `/admin/amenities`. Tapping a row navigates to `/amenities/:id`.
 
-3. **Amenities** — list card, data from `amenities` table (category = 'amenity')
-   - Pickleball Courts (6 courts)
-   - Fitness Center (downstairs at the Barn)
-   - Sauna (downstairs at the Barn)
-   - Game Room (upstairs at the Barn)
-   - Tennis Courts
-   - Basketball Courts
-   - Playground
-   - Pavilion
-
-4. **Schedules** — static links
+3. **Schedules** — static links
    - Barn Schedule
    - (Beach Access removed — not applicable)
+
+#### `/amenities/:id` — Amenity Detail
+
+Routed page (not a modal/overlay). Shows photo (if set, from the `village-summer-amenity-photos` Storage bucket), status badge (if not "open"), hours, age restriction, short description, long description, and additional rules — all optional except name.
 
 ---
 
@@ -258,11 +255,15 @@ The Menu tab opens a slide-in drawer from the left (75% screen width, white back
 **Components:**
 - **FilterChips** — All / On-Site / Nearby / This Weekend (client-side filter)
 - **DateGroup** — label + EventListCard per date group
-- **EventListItem** — dot indicator (blue = on-site, amber = off-property) + title + time + location badge
+- **EventListItem** — dot indicator (blue = on-site, amber = off-property) + title + time + location badge, tappable → `/events/:id`
   - On-site: green location text (venue name, e.g. "Barn") top-right
   - Off-property: amber distance text (e.g. "~12 mi") top-right
 
-**Data:** `events` table, ordered by date/time, grouped by date client-side.
+**Data:** `events` table, ordered by date/time, grouped by date client-side. Guests only ever see `is_active = true` rows (RLS); the admin console shows everything, hidden or not.
+
+#### `/events/:id` — Event Detail
+
+Routed page — the app's first routed detail page, established together with `/amenities/:id` in the same 2026-08-23 build. Shows date/time (or "All day"), location (on-site venue, or off-site address/city + distance), short description, long description, and an optional external web link.
 
 ---
 
@@ -307,33 +308,55 @@ expires_at  timestamptz            -- null = no expiry
 
 ### `events`
 ```sql
-id              uuid primary key default gen_random_uuid()
-title           text not null
-date            date not null
-time_start      time
-time_end        time
-is_onsite       boolean default true
-venue           text                 -- 'Barn', 'Pavilion', 'York', etc.
-distance_miles  numeric(4,1)         -- null if on-site
-city            text                 -- null if on-site
-category        text                 -- 'community' | 'arts' | 'food' | 'auto' | etc.
-is_active       boolean default true
-created_at      timestamptz default now()
+id                uuid primary key default gen_random_uuid()
+title             text not null
+date              date not null
+time_start        time
+time_end          time
+is_onsite         boolean default true
+venue             text                 -- 'Barn', 'Pavilion', 'York', etc.
+distance_miles    numeric(4,1)         -- null if on-site
+city              text                 -- null if on-site (short display, e.g. 'Ogunquit')
+address           text                 -- null if on-site (full street address, detail page only)
+category          text                 -- 'community' | 'arts' | 'food' | 'auto' | etc.
+is_active         boolean default true -- reused as the hide/show flag; a real DELETE is used for hard-delete
+created_at        timestamptz default now()
+description       text                 -- short, shown on cards
+long_description  text                 -- optional, detail page only
+url               text                 -- optional external web link, detail page only
+is_all_day        boolean not null default false
+recurrence_id     uuid                 -- tags rows generated from one recurring input; create-a-series only, no bulk edit
 ```
 
 ### `amenities`
 ```sql
-id            uuid primary key default gen_random_uuid()
-name          text not null
-category      text not null        -- 'pool' | 'amenity'
-status        text default 'open'  -- 'open' | 'closed' | 'maintenance'
-hours_open    time
-hours_close   time
-location      text                 -- 'Downstairs at the Barn', etc.
-notes         text
-age_restriction text              -- 'Ages 16 and up', null if none
-sort_order    int default 0
+id               uuid primary key default gen_random_uuid()
+name             text not null
+category         text                 -- LEGACY, superseded by parent_id — no longer read or written
+status           text default 'open'  -- 'open' | 'closed' | 'maintenance'
+hours_open       time
+hours_close      time
+location         text                 -- 'Downstairs at the Barn', etc.
+notes            text
+age_restriction  text                 -- 'Ages 16 and up', null if none
+sort_order       int default 0
+parent_id        uuid references amenities(id) on delete cascade  -- null = top-level; sub-amenity hierarchy
+description      text                 -- short, shown on the /village list
+long_description text                 -- optional, detail page only
+photo_url        text                 -- storage object path in village-summer-amenity-photos, not a full URL
+rules            text                 -- "Additional Rules", detail page only
+hidden           boolean not null default false  -- curation axis, independent of `status` (operational axis)
 ```
+
+### `announcements`
+```sql
+id          uuid primary key default gen_random_uuid()
+message     text not null
+starts_at   timestamptz not null default now()
+ends_at     timestamptz not null default (date_trunc('day', now()) + interval '1 day')
+created_at  timestamptz default now()
+```
+*No hide/show flag — visibility is entirely governed by the `starts_at`/`ends_at` window (public RLS policy: `starts_at <= now() AND ends_at > now()`). Calmer/lower-urgency than `alerts`; supports multiple simultaneous banners.*
 
 ### `content_pages`
 ```sql
