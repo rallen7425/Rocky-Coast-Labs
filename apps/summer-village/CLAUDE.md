@@ -2,15 +2,41 @@
 
 ---
 
-## 🗂 Session Status (updated 2026-08-23)
+## 🗂 Session Status (updated 2026-08-23 — end of session)
 
-**2026-08-23: Monorepo cutover completed.** This app now deploys from the shared `rocky-coast-labs` Turborepo (`apps/summer-village`), not the old standalone `Rocky-Coast-Guides` repo. Same Vercel project (`prj_8Y6MvpbBi4Ln0ohgPZrQkQ6b5t0n`), same live URL — just repointed. See the Infrastructure table below and `rocky-coast-labs/ARCHITECTURE.md` for full detail. The standalone repo is being kept as a dormant fallback for now, not yet archived — archive it once this cutover has proven stable over a few real sessions.
+### Current status
 
-A code review was then run against the full app (not just the migration diff) and found real bugs, some already fixed and deployed today, some fixed in code but **not yet pushed/deployed** — see the status buckets below before assuming what's actually live.
+Production is live, stable, and verified at the current build (`vercel deploy --prod` → `vercel promote` → curl asset-hash check, all clean as of this write-up). All 17 migrations through `20260823000009` are applied to the remote database. `git` is clean and pushed to `origin/main` — no uncommitted work. The monorepo cutover (this app deploys from `rocky-coast-labs`, not the old standalone `Rocky-Coast-Guides` repo, same Vercel project `prj_8Y6MvpbBi4Ln0ohgPZrQkQ6b5t0n`) is stable; the standalone repo remains a dormant, untouched fallback, not yet archived.
 
-**⚠️ 2026-08-23 (later same day): the live domain was found stuck 44 days stale.** `https://summer-village-life.vercel.app` was pinned to a deployment from July 10 and had not moved across at least 6 subsequent `vercel deploy --prod` runs earlier today — meaning every "live in production" claim below written before this was caught should be treated as unverified for anything shipped after July 10, regardless of what git/deploy history says. Root cause and the fix are in the "🔴 Fixed this session" section and the Deploying section below. **Any future "live in production" claim in this file must be backed by the curl asset-hash check in the Deploying section — not just a successful deploy command.**
+The admin console (`/admin`) now has real, working CRUD for Alerts, Announcements, Events (with simple recurrence, including making an *existing* event recurring), and Amenities (with sub-amenity grouping, drag-and-drop reordering, and photo upload). The guest-facing app has live weather, real events/amenities/alerts/announcements data, and routed detail pages for events and amenities.
 
-**📅 2026-08-23 (same day, third session): Calendar/Announcements/Amenities admin build shipped.** Built and deployed the full feature set requested — a new Announcements banner system, a full "Manage Events & Activities" rewrite (real CRUD, simple recurrence, on/off-site location, detail pages), and a full Amenities rewrite (CRUD, parent/sub-amenity hierarchy, photo uploads, detail pages). Explicitly deferred per user decision: email-upload/web-link-import/AI-web-scan event ingestion — not built, schema left open for it later. See the "✅ Live in production" and "Pages & Component Inventory" sections below for what actually shipped; four new migrations (`20260823000005`–`20260823000009`, including a same-session fix for a `NOT NULL` constraint the new error handling caught immediately) and a new Supabase Storage bucket (`village-summer-amenity-photos`) went out with it. **Also closes "Known issue" #2 below** (admin write-error swallowing) — all four admin pages now use a shared `useSupabaseMutation` hook that surfaces failures instead of silently proceeding.
+### Completed this session (chronological)
+
+1. **Weather/tide feature** — `WeatherRow` wired to real `weather_cache` data, cron scheduled every 30 min.
+2. **Found and fixed a 44-day-stale production domain** — `summer-village-life.vercel.app` was pinned to a July-10 deployment and hadn't moved across 6+ prior `vercel deploy --prod` runs. Root cause in the Vercel dashboard's domain-tracking settings was never fully confirmed (not CLI-reachable), but the workaround (`vercel deploy --prod` → `vercel promote "$DEPLOY_URL"` → curl asset-hash verify, all in the Deploying section below) has been used successfully for every deploy since and should be treated as the permanent runbook, not a one-off fix.
+3. **Fixed anon RLS gaps** on `amenities`/`events` (guests couldn't read either table) and removed a hardcoded `STATIC_EVENTS` fallback in `EventsScroll` that had been silently masking the bug with fake June-2026 data.
+4. **Built the full Calendar/Announcements/Amenities feature** — new `announcements` table + admin page + Home banner; `events` gained description/long_description/url/is_all_day/address/recurrence_id with full admin CRUD and a new `/events/:id` detail page; `amenities` gained parent_id/description/long_description/photo_url/rules/hidden with full admin CRUD, a new Storage bucket (`village-summer-amenity-photos`), and a new `/amenities/:id` detail page. Explicitly deferred per user decision: AI-ish event ingestion (email upload, web-link import, AI web-scan proposals) — not built, schema left open for it later.
+5. **Fixed a stale-cache bug that made real saves look like they'd failed** — the service worker was caching Supabase API *responses* (`StaleWhileRevalidate`, not just static assets), so a successful admin write's own list-refresh could be served pre-write data. Switched to `NetworkFirst`. Separately, added a `controllerchange` listener so an already-open tab reloads once a new service worker takes over, instead of silently running stale JS indefinitely — this class of "the fix isn't showing up" report came up repeatedly this session before the listener existed.
+6. **Added edit + hard delete to Admin Alerts** (previously dismiss-only, no way to remove or fix a mistake).
+7. **Added recurrence support when editing an existing event**, not just when creating a new one (the toggle previously only appeared on "New Event").
+8. **Fixed the admin modal cutting off its own top** (Name field unreachable, blocking creation) — two real, distinct causes found and fixed: a flexbox vertical-centering overflow quirk (switched to always top-aligned), and iOS Safari's `position: fixed` behaving relative to the layout viewport rather than the visual one when the background page was pre-scrolled (added a body-scroll-lock while the modal is open, plus `100dvh`-based sizing). **Not yet confirmed fixed on the user's actual device** — see Known Issues.
+9. **Added drag-and-drop reordering to Admin Amenities** (`@dnd-kit`) — the admin order is now the app order, since the guest-facing query already read `sort_order`.
+10. **Added bulk/inline sub-amenity management** — editing a top-level amenity now shows a Sub-Amenities section to either add a brand-new child by name or attach an *existing* amenity as a child, fixing a real workflow gap (previously you could only link one amenity to a parent at a time, from that child's own edit form). Caught and fixed a real safety bug before shipping: removing an item from this list now *detaches* it (`parent_id` → null) rather than hard-deleting it. Used this to actually fix the user's real "Pools" amenity, which existed empty with its three pools still unattached at top-level — verified via direct DB query and the live guest-facing page.
+
+### Known issues / what's broken
+
+1. **Modal top-cut-off — fixed twice, unconfirmed on the reporter's device.** Both root causes found and fixed (see #8 above) were reproduced and verified in this session's own testing (both desktop and mobile-emulated viewports, including the specific "background page pre-scrolled" scenario). The user reported it a third time after the *first* fix; a second, different root cause was found and fixed, but no screenshot or device/browser info was ever obtained to confirm the second fix actually resolved what they were seeing. **If this recurs, get a screenshot and device/browser details (installed PWA vs. a regular Safari/Chrome tab) before attempting another blind fix** — two rounds of guessing-then-fixing is already more than ideal, and a third without evidence risks fixing a third real bug while missing whatever it is they're still seeing, or chasing something that's actually just stale-tab caching (see item 5 in Completed This Session — a tab open since before that fix shipped won't have picked it up without one manual reload).
+2. **New admin accounts get routed into the guest onboarding wizard instead of `/admin`.** `App.tsx`'s `needsOnboarding` check is just `!profile.cottageNumber` with no admin exemption. Not addressed this session — carried over.
+3. **Content pages not built.** Menu items (Arrival Guide, Renter's Guide, WiFi, Property Rules, FAQ) tap to nothing; `content_pages` table is seeded but has no guest-facing detail screens and no admin management page either. Not addressed this session — carried over.
+4. **Unverified routing edge case, carried over from before the cutover:** whether a user who clears `localStorage` but still holds a live Supabase session cookie is routed correctly by `RequireAuth`. Looks correct by inspection, never exercised end-to-end.
+5. **No bulk edit/cancel of a whole recurring event series** — by design, MVP scope is create-a-series-only (both for new events and for making an existing event recurring). Editing or deleting one instance never affects its siblings.
+6. **AI event ingestion (email upload, web-link import, AI web-scan-and-propose) is out of scope** — explicit user decision, not a bug. Schema doesn't preclude adding it later.
+
+### Next session should pick up from
+
+- If the modal issue is reported again: get a screenshot + device info first (see Known Issue 1) before changing code.
+- The "next round" admin issues (Known Issues 2–3 above) were explicitly deferred by the user before this session's Calendar/Announcements/Amenities work took over — worth checking if they're still the priority, or if AI event ingestion (explicitly deferred, see Known Issue 6) has moved up.
+- Low priority, no urgency: the Vercel dashboard's domain-tracking setting for `summer-village-life.vercel.app` was never actually inspected (Settings → Domains isn't CLI-reachable) — the `vercel promote` + curl-verify workaround has been solid across many deploys this session, so this is a nice-to-have root-cause close-out, not a blocker.
 
 ### Infrastructure
 
@@ -29,37 +55,6 @@ A code review was then run against the full app (not just the migration diff) an
 - Also: this app has a PWA service worker that aggressively caches assets. If a fix doesn't appear to be live after a deploy, check for a stale service worker before assuming the deploy failed (`navigator.serviceWorker.getRegistrations()` + `caches.keys()` in devtools, unregister/clear, hard reload).
 - **Fixed 2026-08-23**: that same service worker was also caching every Supabase REST *response* (`vite.config.ts`'s `runtimeCaching`), not just static assets — `StaleWhileRevalidate` with a 1hr TTL. A real admin insert/update would succeed, but the list re-fetch right after it was answered from the pre-write cache, making a genuine save look like it silently failed (reported live: a new alert and event both actually saved, neither appeared to). Switched to `NetworkFirst` (cache name bumped to `supabase-cache-v2`). **This class of bug can only be caught with a production-mode build** (`npm run build && npm run preview`, or the `summer-village-preview` launch.json entry) — `vite dev` doesn't run the real service worker, so this kind of regression is invisible in normal dev testing.
 
-### ✅ Live in production right now (verified against the real domain via the curl asset-hash check)
-
-- The monorepo cutover itself — `village_summer` schema targeting, real seeded data rendering (alerts, events, weather, amenities).
-- Alerts Realtime subscription fix — was hardcoded to `schema: 'public'` (a leftover from before the schema migration), so live alert updates silently stopped working for already-open sessions.
-- The `village_summer.*` admin-role RLS policies check `app_metadata` instead of `user_metadata`, and the frontend (`auth.tsx`) reads `app_metadata` and can no longer write `role` at all — both the database and code sides of the privilege-escalation fix (`4db57d4`) are deployed.
-- Village/Events pages pull real data instead of hardcoded fallbacks (`99d8ad0`) — `VillagePage` queries `amenities`, `/events` queries `events` live. `AdminEventsPage`'s "(~null mi)" text bug and `EventsScroll`'s real-`0`-mile-treated-as-missing bug are both fixed.
-- Live weather/tide on the Home screen (`ac3590f`) — `WeatherRow` reads real data from `weather_cache` via `useWeather()`.
-- Guests (anon) can read `amenities` and `events`, not just `authenticated` users — closes the gap described in the section below.
-- `EventsScroll`'s hardcoded `STATIC_EVENTS` fake-June-2026-event fallback is removed; a genuinely empty result now shows "No upcoming events scheduled." instead of silently substituting fake data.
-- **Announcements** — new admin page (`/admin/announcements`) and Home-screen banner (calmer/blue, stacks below the red `AlertBanner`, independently dismissible per-message), scheduled by a `starts_at`/`ends_at` window that defaults to "now until midnight tonight."
-- **Manage Events & Activities** — `AdminEventsPage` now shows *all* events by default (not just upcoming) with a real hard delete alongside hide/show, plus short/long description, all-day toggle, simple weekly recurrence (materializes one row per matching weekday up to an end date, sharing a `recurrence_id`), off-site `address`, and an optional web link. Guests get a new `/events/:id` detail page — the app's first routed detail page.
-- **Manage Amenities** — `AdminAmenitiesPage` went from status-only to full CRUD: hours, age restriction, rules, a parent/sub-amenity picker, long description, and photo upload. Guests get a `/amenities/:id` detail page and a unified list on `/village` (see the breaking UI change noted under `/village` below).
-
-**After the `4db57d4` deploy, the admin account needs to sign out and back in** — a login session issued before the `app_metadata` change won't reflect it until refreshed.
-
-### 🔴 Fixed this session — stale-domain bug and the anon-access gap it hid
-
-**The live domain was 44 days stale.** `https://summer-village-life.vercel.app` was pinned to a July-10 deployment and didn't move across at least 6 `vercel deploy --prod` runs earlier today — likely because an earlier `vercel rollback` (see the Infrastructure gotchas above) pinned that specific domain alias in a way that stopped it auto-tracking `main`. Root cause isn't fully confirmed since Project Settings → Domains isn't CLI-reachable — **next session should check the Vercel dashboard** (`summer-village-life` project → Settings → Domains → is `summer-village-life.vercel.app` tracking the Production branch, or pinned?) and fix it there if possible. Until then, the Deploying section below has a mandatory verification step so this can't silently recur.
-
-**That staleness hid a second bug**: `village_summer.amenities` and `village_summer.events` were never granted `anon` SELECT (only `alerts` had it from the base schema; `weather_cache` was fixed earlier this session). Guests hitting `/village` saw an empty Pools/Amenities list, and guests hitting `/events` saw "No events match this filter." Migration `20260823000004_village_summer_anon_amenities_events.sql` grants both. `EventsScroll`'s `STATIC_EVENTS` fallback (see above) had been silently masking the `events` half of this on the Home screen the whole time by substituting fake data whenever the live query returned zero rows — it never returned zero rows to a guest by chance, it always did, because guests could never actually read the table.
-
-### Known issues / next round (explicitly deferred — "the admin section")
-
-Found by the same code review, not yet started, planned as the next round of work per the user:
-
-1. **New admin accounts get routed into the guest onboarding wizard instead of `/admin`.** `App.tsx`'s `needsOnboarding` check is just `!profile.cottageNumber` with no admin exemption — an admin account (created directly via the Supabase Admin API, no cottage number) lands in the 3-step renter onboarding flow after login instead of going to the admin console.
-2. ~~Several admin-console screens silently swallow write errors.~~ **Fixed 2026-08-23** — all four admin pages (`AdminAlertsPage`, `AdminAnnouncementsPage`, `AdminEventsPage`, `AdminAmenitiesPage`) now go through `apps/summer-village/src/features/admin/hooks/useSupabaseMutation.ts`, which always surfaces `{ error }` and refuses to let a caller treat a failed write as a success.
-3. Also still open, lower priority: **Content pages not built** — Menu items (Arrival Guide, Renter's Guide, WiFi, Property Rules, FAQ) tap to nothing; `content_pages` table is seeded but no detail screens exist.
-4. Unverified, carried over from before the cutover: whether a user who clears `localStorage` but still holds a live Supabase session cookie is routed correctly. `RequireAuth` redirects to `/welcome` only when `!session && !isGuest`, which looks correct by inspection but was never actually exercised end-to-end.
-5. **Deferred by explicit user decision (2026-08-23), not a bug**: the three AI-ish event-ingestion options (upload emails to extract events, import a web page's events, scan the web and propose nearby events for approval) were scoped out of the Calendar/Announcements/Amenities build. Core CRUD shipped; ingestion is a follow-on phase whenever it's prioritized.
-
 ### Deploying
 
 ```bash
@@ -69,7 +64,7 @@ vercel promote "$DEPLOY_URL"         # reassign ALL production domains — see t
 ```
 Do **not** `vercel build` locally then `vercel deploy --prebuilt` for this project — see Infrastructure notes above for why.
 
-**Mandatory post-deploy check — the live domain has silently failed to update before (see "Fixed this session" above).** Never trust the deploy command's own success output:
+**Mandatory post-deploy check — the live domain has silently failed to update before (see "Completed this session" #2 above).** Never trust the deploy command's own success output:
 ```bash
 curl -s https://summer-village-life.vercel.app/ | grep -o 'assets/index-[a-zA-Z0-9]*\.js'
 ```
