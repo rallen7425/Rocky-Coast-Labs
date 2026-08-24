@@ -1,9 +1,10 @@
 import { useEffect, useState, FormEvent } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, Pencil, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { AdminPageTitle } from './AdminLayout'
 import { Modal } from './components/Modal'
 import { FormField, FormError, inputClass, textareaClass } from './components/FormField'
+import { ConfirmButton } from './components/ConfirmButton'
 import { useSupabaseMutation } from './hooks/useSupabaseMutation'
 import { format, parseISO } from 'date-fns'
 
@@ -22,11 +23,14 @@ const SEVERITY_STYLES = {
   emergency: { bg: '#fff5f5', color: '#ba1a1a', dot: '#ba1a1a' },
 }
 
+const BLANK = { message: '', severity: 'warning' as Alert['severity'], expires_at: '' }
+
 export function AdminAlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ message: '', severity: 'warning' as Alert['severity'], expires_at: '' })
+  const [editId, setEditId] = useState<string | null>(null)
+  const [form, setForm] = useState(BLANK)
   const { mutate, saving, error, setError } = useSupabaseMutation()
 
   const load = async () => {
@@ -40,26 +44,52 @@ export function AdminAlertsPage() {
 
   useEffect(() => { load() }, [])
 
+  const openNew = () => {
+    setError(null)
+    setForm(BLANK)
+    setEditId(null)
+    setShowForm(true)
+  }
+
+  const startEdit = (alert: Alert) => {
+    setError(null)
+    setForm({
+      message: alert.message,
+      severity: alert.severity,
+      expires_at: alert.expires_at ? alert.expires_at.slice(0, 16) : '',
+    })
+    setEditId(alert.id)
+    setShowForm(true)
+  }
+
   const dismiss = async (id: string) => {
     const { ok } = await mutate(() => supabase.from('alerts').update({ is_active: false }).eq('id', id))
     if (ok) load()
   }
 
-  const create = async (e: FormEvent) => {
+  const remove = async (id: string) => {
+    const { ok } = await mutate(() => supabase.from('alerts').delete().eq('id', id))
+    if (ok) load()
+  }
+
+  const save = async (e: FormEvent) => {
     e.preventDefault()
-    const { ok } = await mutate(() =>
-      supabase.from('alerts').insert({
-        message: form.message,
-        severity: form.severity,
-        is_active: true,
-        expires_at: form.expires_at || null,
-      })
-    )
-    if (ok) {
-      setForm({ message: '', severity: 'warning', expires_at: '' })
-      setShowForm(false)
-      load()
+    const payload = {
+      message: form.message,
+      severity: form.severity,
+      expires_at: form.expires_at || null,
     }
+    if (editId) {
+      const { ok } = await mutate(() => supabase.from('alerts').update(payload).eq('id', editId))
+      if (!ok) return
+    } else {
+      const { ok } = await mutate(() => supabase.from('alerts').insert({ ...payload, is_active: true }))
+      if (!ok) return
+    }
+    setForm(BLANK)
+    setEditId(null)
+    setShowForm(false)
+    load()
   }
 
   return (
@@ -67,7 +97,7 @@ export function AdminAlertsPage() {
       <div className="flex items-center justify-between mb-6">
         <AdminPageTitle>Alerts</AdminPageTitle>
         <button
-          onClick={() => { setError(null); setShowForm(true) }}
+          onClick={openNew}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-body font-semibold text-[14px] text-white transition-colors"
           style={{ background: '#103457' }}
         >
@@ -77,8 +107,8 @@ export function AdminAlertsPage() {
       </div>
 
       {showForm && (
-        <Modal title="Post New Alert" onClose={() => setShowForm(false)}>
-          <form onSubmit={create} className="flex flex-col gap-4">
+        <Modal title={editId ? 'Edit Alert' : 'Post New Alert'} onClose={() => setShowForm(false)}>
+          <form onSubmit={save} className="flex flex-col gap-4">
             <FormError message={error} />
 
             <FormField label="Message" required>
@@ -119,7 +149,7 @@ export function AdminAlertsPage() {
                 Cancel
               </button>
               <button type="submit" disabled={saving} className="px-6 py-2.5 rounded-xl font-body font-semibold text-[14px] text-white disabled:opacity-60" style={{ background: '#103457' }}>
-                {saving ? 'Posting…' : 'Post Alert'}
+                {saving ? 'Saving…' : editId ? 'Save Changes' : 'Post Alert'}
               </button>
             </div>
           </form>
@@ -155,15 +185,21 @@ export function AdminAlertsPage() {
                     {alert.expires_at && ` · Expires ${format(parseISO(alert.expires_at), 'MMM d, h:mm a')}`}
                   </p>
                 </div>
-                {alert.is_active && (
-                  <button
-                    onClick={() => dismiss(alert.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg font-body text-[12px] text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0"
-                  >
-                    <X size={12} />
-                    Dismiss
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {alert.is_active && (
+                    <button
+                      onClick={() => dismiss(alert.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg font-body text-[12px] text-gray-600 hover:bg-gray-100 transition-colors"
+                    >
+                      <X size={12} />
+                      Dismiss
+                    </button>
+                  )}
+                  <button onClick={() => startEdit(alert)} className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                    <Pencil size={15} />
                   </button>
-                )}
+                  <ConfirmButton icon={Trash2} onConfirm={() => remove(alert.id)} />
+                </div>
               </div>
             )
           })}
