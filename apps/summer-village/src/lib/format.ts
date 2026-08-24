@@ -13,9 +13,11 @@ export function toDateTimeLocalInput(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** Converts a `<input type="datetime-local">` value (local time, no timezone) to a UTC ISO timestamp for Supabase. */
-export function fromDateTimeLocalInput(value: string): string {
-  return new Date(value).toISOString()
+/** Converts a `<input type="datetime-local">` value (local time, no timezone) to a UTC ISO timestamp for Supabase. Returns `null` for an empty/incomplete value instead of throwing. */
+export function fromDateTimeLocalInput(value: string): string | null {
+  if (!value) return null
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? null : d.toISOString()
 }
 
 /** Midnight at the end of the local day containing `iso` — i.e. the start of the next calendar day. */

@@ -7,6 +7,7 @@ import { SectionLabel } from '../../components/SectionLabel'
 import { RowCard, RowItem, StatusBadge } from '../../components/RowCard'
 import { useAmenities, type Amenity } from '../../lib/useAmenities'
 import { formatTime } from '../../lib/format'
+import { useScrollLock } from '../../lib/useScrollLock'
 import barnPhoto from '../../assets/sv-barn.jpg'
 import mapThumb from '../../assets/sv-map-thumb.png'
 
@@ -127,17 +128,26 @@ export function VillagePage() {
       </div>
 
       {/* Full-screen map overlay */}
-      {mapExpanded && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col">
-          <div className="flex items-center justify-between px-5 py-4" style={{ background: '#103457' }}>
-            <span className="font-display font-bold text-white text-[17px]">Property Map</span>
-            <button className="text-white/70 font-body text-[14px]" onClick={() => setMapExpanded(false)}>
-              Close ✕
-            </button>
-          </div>
-          <img src={mapThumb} alt="Full property map" className="flex-1 w-full object-contain bg-[#0a1628]" />
-        </div>
-      )}
+      {mapExpanded && <FullMapOverlay onClose={() => setMapExpanded(false)} />}
     </>
+  )
+}
+
+function FullMapOverlay({ onClose }: { onClose: () => void }) {
+  // Same iOS Safari position:fixed-relative-to-layout-viewport bug the admin
+  // Modal was fixed for -- this overlay is a second, independent fixed
+  // full-screen element, so it needs the same body-scroll-lock + dvh sizing.
+  useScrollLock()
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh' }}>
+      <div className="flex items-center justify-between px-5 py-4" style={{ background: '#103457', paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+        <span className="font-display font-bold text-white text-[17px]">Property Map</span>
+        <button className="text-white/70 font-body text-[14px]" onClick={onClose}>
+          Close ✕
+        </button>
+      </div>
+      <img src={mapThumb} alt="Full property map" className="flex-1 w-full object-contain bg-[#0a1628]" />
+    </div>
   )
 }

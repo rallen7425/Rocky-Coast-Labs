@@ -51,7 +51,9 @@ interface FormState {
   status: AmenityStatus
   hours_open: string
   hours_close: string
+  location: string
   age_restriction: string
+  notes: string
   rules: string
   parent_id: string
   long_description: string
@@ -60,8 +62,8 @@ interface FormState {
 }
 
 const BLANK: FormState = {
-  name: '', description: '', status: 'open', hours_open: '', hours_close: '',
-  age_restriction: '', rules: '', parent_id: '', long_description: '', photo_url: null,
+  name: '', description: '', status: 'open', hours_open: '', hours_close: '', location: '',
+  age_restriction: '', notes: '', rules: '', parent_id: '', long_description: '', photo_url: null,
   subAmenities: [],
 }
 
@@ -74,7 +76,9 @@ export function AdminAmenitiesPage() {
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [attachSelection, setAttachSelection] = useState('')
-  const { mutate, saving, error, setError } = useSupabaseMutation()
+  const [submitting, setSubmitting] = useState(false)
+  const [dragError, setDragError] = useState<string | null>(null)
+  const { mutate, error, setError } = useSupabaseMutation()
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
@@ -102,8 +106,8 @@ export function AdminAmenitiesPage() {
     setError(null)
     setForm({
       name: a.name, description: a.description ?? '', status: a.status,
-      hours_open: a.hours_open ?? '', hours_close: a.hours_close ?? '',
-      age_restriction: a.age_restriction ?? '', rules: a.rules ?? '',
+      hours_open: a.hours_open ?? '', hours_close: a.hours_close ?? '', location: a.location ?? '',
+      age_restriction: a.age_restriction ?? '', notes: a.notes ?? '', rules: a.rules ?? '',
       parent_id: a.parent_id ?? '', long_description: a.long_description ?? '',
       photo_url: a.photo_url,
       subAmenities: childrenOf(a.id).map(c => ({ key: c.id, id: c.id, name: c.name })),
@@ -132,6 +136,7 @@ export function AdminAmenitiesPage() {
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
+    if (submitting) return
 
     // A group only makes sense with 2+ sub-amenities -- with exactly one,
     // it should just be a single flat amenity instead.
@@ -144,74 +149,91 @@ export function AdminAmenitiesPage() {
       return
     }
 
-    let photo_url = form.photo_url
-    if (photoFile) {
-      setUploading(true)
-      const path = `${crypto.randomUUID()}-${photoFile.name}`
-      const { error: uploadError } = await supabase.storage.from(AMENITY_PHOTO_BUCKET).upload(path, photoFile)
-      setUploading(false)
-      if (uploadError) { setError(uploadError.message); return }
-      photo_url = path
-    }
+    setSubmitting(true)
+    try {
+      let photo_url = form.photo_url
+      if (photoFile) {
+        setUploading(true)
+        const path = `${crypto.randomUUID()}-${photoFile.name}`
+        const { error: uploadError } = await supabase.storage.from(AMENITY_PHOTO_BUCKET).upload(path, photoFile)
+        setUploading(false)
+        if (uploadError) { setError(uploadError.message); return }
+        photo_url = path
+      }
 
-    const payload = {
-      name: form.name,
-      description: form.description || null,
-      status: form.status,
-      hours_open: form.hours_open || null,
-      hours_close: form.hours_close || null,
-      age_restriction: form.age_restriction || null,
-      rules: form.rules || null,
-      parent_id: form.parent_id || null,
-      long_description: form.long_description || null,
-      photo_url,
-    }
+      const payload = {
+        name: form.name,
+        description: form.description || null,
+        status: form.status,
+        hours_open: form.hours_open || null,
+        hours_close: form.hours_close || null,
+        location: form.location || null,
+        age_restriction: form.age_restriction || null,
+        notes: form.notes || null,
+        rules: form.rules || null,
+        parent_id: form.parent_id || null,
+        long_description: form.long_description || null,
+        photo_url,
+      }
 
-    let parentId = editId
-    if (editId) {
-      const { ok } = await mutate(() => supabase.from('amenities').update(payload).eq('id', editId))
-      if (!ok) return
-    } else {
-      const { data, ok } = await mutate(() =>
-        supabase.from('amenities').insert({ ...payload, hidden: false, sort_order: amenities.length }).select().single()
-      )
-      if (!ok) return
-      parentId = (data as Amenity | null)?.id ?? null
-    }
+      let parentId = editId
+      if (editId) {
+        const { ok } = await mutate(() => supabase.from('amenities').update(payload).eq('id', editId))
+        if (!ok) return
+      } else {
+        const { data, ok } = await mutate(() =>
+          supabase.from('amenities').insert({ ...payload, hidden: false, sort_order: amenities.length }).select().single()
+        )
+        if (!ok) return
+        parentId = (data as Amenity | null)?.id ?? null
+      }
 
-    // Reconcile inline sub-amenities -- only meaningful when this amenity is
-    // (or is becoming) a top-level one. An entry can be a brand-new
-    // sub-amenity (no id) or an existing amenity attached from the picker
-    // (has an id but wasn't necessarily a child before) -- either way it
-    // gets parent_id set to this parent. Anything removed from the list is
-    // *detached* (parent_id -> null), not deleted -- removing something
-    // from a group shouldn't destroy it, especially since it may have been
-    // a real standalone amenity before being attached here. A real delete
-    // is still available via that item's own trash icon in the main list.
-    if (!form.parent_id && parentId) {
+      // Reconcile inline sub-amenities. An entry can be a brand-new
+      // sub-amenity (no id) or an existing amenity attached from the picker
+      // (has an id but wasn't necessarily a child before) -- either way it
+      // gets parent_id set to this parent. Anything removed from the list is
+      // *detached* (parent_id -> null), not deleted -- removing something
+      // from a group shouldn't destroy it, especially since it may have been
+      // a real standalone amenity before being attached here. A real delete
+      // is still available via that item's own trash icon in the main list.
+      //
+      // This amenity's own real children (in the DB, independent of what's
+      // currently in the form) always get detached when this amenity is
+      // becoming a sub-amenity itself -- the "Sub-amenity of" picker only
+      // unlocks once the form's sub-amenities list is empty, but that alone
+      // doesn't touch the DB, so without this a save could otherwise leave
+      // real children still pointing at a parent that itself now has a
+      // parent, nesting them two levels deep where nothing renders them.
       const existingChildren = editId ? childrenOf(editId) : []
-      const keptIds = new Set(form.subAmenities.filter(s => s.id).map(s => s.id))
-      const removed = existingChildren.filter(c => !keptIds.has(c.id))
+      const removed = form.parent_id
+        ? existingChildren
+        : existingChildren.filter(c => !form.subAmenities.some(s => s.id === c.id))
 
       if (removed.length > 0) {
         const { error: detachError } = await supabase.from('amenities').update({ parent_id: null }).in('id', removed.map(c => c.id))
         if (detachError) { setError(detachError.message); load(); return }
       }
-      for (const sub of form.subAmenities) {
-        const { error: subError } = sub.id
-          ? await supabase.from('amenities').update({ name: sub.name, parent_id: parentId }).eq('id', sub.id)
-          : await supabase.from('amenities').insert({
-              name: sub.name, parent_id: parentId, status: 'open', hidden: false, sort_order: amenities.length,
-            })
-        if (subError) { setError(subError.message); load(); return }
-      }
-    }
 
-    setShowForm(false)
-    setEditId(null)
-    setForm(BLANK)
-    setPhotoFile(null)
-    load()
+      if (!form.parent_id && parentId) {
+        let nextSortOrder = childrenOf(parentId).length
+        for (const sub of form.subAmenities) {
+          const { error: subError } = sub.id
+            ? await supabase.from('amenities').update({ name: sub.name, parent_id: parentId }).eq('id', sub.id)
+            : await supabase.from('amenities').insert({
+                name: sub.name, parent_id: parentId, status: 'open', hidden: false, sort_order: nextSortOrder++,
+              })
+          if (subError) { setError(subError.message); load(); return }
+        }
+      }
+
+      setShowForm(false)
+      setEditId(null)
+      setForm(BLANK)
+      setPhotoFile(null)
+      load()
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const toggleHidden = async (a: Amenity) => {
@@ -253,12 +275,13 @@ export function AdminAmenitiesPage() {
         .sort((a, b) => a.sort_order - b.sort_order)
     )
 
+    setDragError(null)
     const results = await Promise.all(
       reordered.map((a, i) => supabase.from('amenities').update({ sort_order: i }).eq('id', a.id))
     )
     const failed = results.find(r => r.error)
     if (failed?.error) {
-      setError(failed.error.message)
+      setDragError(failed.error.message)
       load()
     }
   }
@@ -317,11 +340,29 @@ export function AdminAmenitiesPage() {
               </FormField>
             </div>
 
+            <FormField label="Location (optional)">
+              <input
+                value={form.location}
+                onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                placeholder="e.g. Downstairs at the Barn"
+                className={inputClass}
+              />
+            </FormField>
+
             <FormField label="Age Restriction (optional)">
               <input
                 value={form.age_restriction}
                 onChange={e => setForm(f => ({ ...f, age_restriction: e.target.value }))}
                 placeholder="e.g. Ages 16 and up"
+                className={inputClass}
+              />
+            </FormField>
+
+            <FormField label="Notes (optional, shown to guests)">
+              <input
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="e.g. Card key required at front desk"
                 className={inputClass}
               />
             </FormField>
@@ -400,7 +441,11 @@ export function AdminAmenitiesPage() {
 
                   {(() => {
                     const attachedIds = new Set(form.subAmenities.map(s => s.id).filter(Boolean))
-                    const candidates = topLevel.filter(a => a.id !== editId && !attachedIds.has(a.id))
+                    // Excludes amenities that already have their own sub-amenities --
+                    // attaching one of those here would nest its real children two
+                    // levels deep, where neither the admin list nor the guest page
+                    // resolves more than one level of parent_id.
+                    const candidates = topLevel.filter(a => a.id !== editId && !attachedIds.has(a.id) && childrenOf(a.id).length === 0)
                     if (candidates.length === 0) return null
                     return (
                       <div className="flex gap-2 items-center mt-1">
@@ -476,16 +521,18 @@ export function AdminAmenitiesPage() {
               </button>
               <button
                 type="submit"
-                disabled={saving || uploading}
+                disabled={submitting || uploading}
                 className="px-6 py-2.5 rounded-xl font-body font-semibold text-[14px] text-white disabled:opacity-60"
                 style={{ background: '#103457' }}
               >
-                {uploading ? 'Uploading…' : saving ? 'Saving…' : editId ? 'Save Changes' : 'Create Amenity'}
+                {uploading ? 'Uploading…' : submitting ? 'Saving…' : editId ? 'Save Changes' : 'Create Amenity'}
               </button>
             </div>
           </form>
         </Modal>
       )}
+
+      {dragError && <div className="mb-4"><FormError message={dragError} /></div>}
 
       {loading ? <p className="font-body text-gray-400 text-[14px]">Loading…</p> : (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -551,6 +598,7 @@ function SortableAmenityRow({ amenity: a, indent, childCount, onToggleHidden, on
         <div className="font-body text-gray-500 text-[12px] mt-0.5">
           {STATUS_OPTS.find(o => o.value === a.status)?.label}
           {a.hours_open && a.hours_close && ` · ${a.hours_open.slice(0, 5)}–${a.hours_close.slice(0, 5)}`}
+          {a.location && ` · ${a.location}`}
           {a.age_restriction && ` · ${a.age_restriction}`}
         </div>
       </div>

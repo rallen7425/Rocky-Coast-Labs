@@ -1,5 +1,6 @@
-import { ReactNode, useEffect } from 'react'
+import { ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { useScrollLock } from '../../../lib/useScrollLock'
 
 interface ModalProps {
   title: string
@@ -8,28 +9,7 @@ interface ModalProps {
 }
 
 export function Modal({ title, onClose, children }: ModalProps) {
-  // iOS Safari renders `position: fixed` relative to the layout viewport,
-  // not the visual one -- if the background page was scrolled before the
-  // modal opened, a fixed full-screen overlay can end up shifted so its own
-  // top is above the visible area, independent of the flexbox issue fixed
-  // below. Locking (and precisely restoring) body scroll while the modal is
-  // open is the standard fix for that class of bug.
-  useEffect(() => {
-    const scrollY = window.scrollY
-    const body = document.body
-    const prev = { position: body.style.position, top: body.style.top, width: body.style.width, overflow: body.style.overflow }
-    body.style.position = 'fixed'
-    body.style.top = `-${scrollY}px`
-    body.style.width = '100%'
-    body.style.overflow = 'hidden'
-    return () => {
-      body.style.position = prev.position
-      body.style.top = prev.top
-      body.style.width = prev.width
-      body.style.overflow = prev.overflow
-      window.scrollTo(0, scrollY)
-    }
-  }, [])
+  useScrollLock()
 
   return (
     <div

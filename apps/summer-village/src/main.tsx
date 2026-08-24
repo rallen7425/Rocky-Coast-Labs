@@ -13,13 +13,29 @@ import App from './App.tsx'
 // indefinitely. Reload once, the first time a new SW actually takes
 // control, so a deploy reaches open tabs without the user having to
 // know to hard-refresh.
+//
+// A blind, immediate reload can itself destroy work-in-progress: an admin
+// mid-edit in an Alerts/Announcements/Events/Amenities modal would lose
+// whatever they were typing the instant a deploy lands. `useScrollLock`
+// marks `document.body[data-modal-open]` for as long as any modal built on
+// it is open, so defer the reload until that marker is gone.
 if ('serviceWorker' in navigator) {
   let refreshed = false
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshed) return
+  let pendingReload = false
+
+  const reloadIfSafe = () => {
+    if (refreshed || !pendingReload) return
+    if (document.body.dataset.modalOpen) return
     refreshed = true
     window.location.reload()
+  }
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    pendingReload = true
+    reloadIfSafe()
   })
+
+  new MutationObserver(reloadIfSafe).observe(document.body, { attributes: true, attributeFilter: ['data-modal-open'] })
 }
 
 createRoot(document.getElementById('root')!).render(

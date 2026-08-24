@@ -54,13 +54,18 @@ export function AdminAnnouncementsPage() {
 
   const handleStartsAtChange = (value: string) => {
     setStartsAtLocal(value)
-    setEndsAtLocal(toDateTimeLocalInput(midnightOfDay(fromDateTimeLocalInput(value))))
+    const parsed = fromDateTimeLocalInput(value)
+    if (parsed) setEndsAtLocal(toDateTimeLocalInput(midnightOfDay(parsed)))
   }
 
   const create = async (e: FormEvent) => {
     e.preventDefault()
     const starts_at = showImmediately ? new Date().toISOString() : fromDateTimeLocalInput(startsAtLocal)
     const ends_at = fromDateTimeLocalInput(endsAtLocal)
+    if (!starts_at || !ends_at) {
+      setError('Please enter valid start and end dates/times.')
+      return
+    }
     const { ok } = await mutate(() => supabase.from('announcements').insert({ message, starts_at, ends_at }))
     if (ok) {
       setShowForm(false)

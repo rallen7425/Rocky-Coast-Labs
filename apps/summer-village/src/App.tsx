@@ -23,7 +23,7 @@ function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
   const { profile, isGuest } = useAuth()
 
-  const needsOnboarding = !isGuest && profile && !profile.cottageNumber
+  const needsOnboarding = !isGuest && profile && profile.role !== 'admin' && !profile.cottageNumber
 
   if (needsOnboarding) return <OnboardingPage />
 

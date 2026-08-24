@@ -6,6 +6,7 @@ import { Modal } from './components/Modal'
 import { FormField, FormError, inputClass, textareaClass } from './components/FormField'
 import { ConfirmButton } from './components/ConfirmButton'
 import { useSupabaseMutation } from './hooks/useSupabaseMutation'
+import { toDateTimeLocalInput, fromDateTimeLocalInput } from '../../lib/format'
 import { format, parseISO } from 'date-fns'
 
 interface Alert {
@@ -56,7 +57,7 @@ export function AdminAlertsPage() {
     setForm({
       message: alert.message,
       severity: alert.severity,
-      expires_at: alert.expires_at ? alert.expires_at.slice(0, 16) : '',
+      expires_at: alert.expires_at ? toDateTimeLocalInput(alert.expires_at) : '',
     })
     setEditId(alert.id)
     setShowForm(true)
@@ -77,7 +78,7 @@ export function AdminAlertsPage() {
     const payload = {
       message: form.message,
       severity: form.severity,
-      expires_at: form.expires_at || null,
+      expires_at: form.expires_at ? fromDateTimeLocalInput(form.expires_at) : null,
     }
     if (editId) {
       const { ok } = await mutate(() => supabase.from('alerts').update(payload).eq('id', editId))

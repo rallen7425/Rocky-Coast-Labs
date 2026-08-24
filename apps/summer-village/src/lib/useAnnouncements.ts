@@ -20,6 +20,21 @@ export function useAnnouncements() {
 
   useEffect(() => {
     let mounted = true
+    let expiryTimer: ReturnType<typeof setTimeout> | null = null
+
+    // The public RLS window only re-filters on each fetch -- without this,
+    // an announcement fetched while live keeps showing in the UI straight
+    // through its own `ends_at`, until some unrelated DB write happens to
+    // trigger a realtime re-fetch. Schedule a re-fetch for exactly when the
+    // soonest-ending announcement we're currently holding expires.
+    function scheduleExpiryRefetch(data: Announcement[]) {
+      if (expiryTimer) clearTimeout(expiryTimer)
+      if (data.length === 0) return
+      const nextEndsAt = Math.min(...data.map(a => new Date(a.ends_at).getTime()))
+      const delay = nextEndsAt - Date.now()
+      if (delay <= 0) return
+      expiryTimer = setTimeout(fetchAnnouncements, delay)
+    }
 
     async function fetchAnnouncements() {
       const { data, error } = await supabase
@@ -28,7 +43,10 @@ export function useAnnouncements() {
         .order('starts_at')
 
       if (!mounted) return
-      if (!error && data) setAnnouncements(data as Announcement[])
+      if (!error && data) {
+        setAnnouncements(data as Announcement[])
+        scheduleExpiryRefetch(data as Announcement[])
+      }
       setLoading(false)
     }
 
@@ -41,6 +59,7 @@ export function useAnnouncements() {
 
     return () => {
       mounted = false
+      if (expiryTimer) clearTimeout(expiryTimer)
       supabase.removeChannel(channel)
     }
   }, [])
