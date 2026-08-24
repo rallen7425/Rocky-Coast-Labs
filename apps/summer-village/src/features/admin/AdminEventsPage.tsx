@@ -74,6 +74,7 @@ export function AdminEventsPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [editId, setEditId] = useState<string | null>(null)
+  const [editingRecurrenceId, setEditingRecurrenceId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(BLANK)
   const { mutate, saving, error, setError } = useSupabaseMutation()
@@ -94,6 +95,7 @@ export function AdminEventsPage() {
     setError(null)
     setForm(BLANK)
     setEditId(null)
+    setEditingRecurrenceId(null)
     setShowForm(true)
   }
 
@@ -108,6 +110,7 @@ export function AdminEventsPage() {
       recurring: false, weekdays: [], recurrenceEnd: '',
     })
     setEditId(e.id)
+    setEditingRecurrenceId(e.recurrence_id)
     setShowForm(true)
   }
 
@@ -131,10 +134,28 @@ export function AdminEventsPage() {
     }
 
     if (editId) {
-      const { ok } = await mutate(() =>
-        supabase.from('events').update({ ...basePayload, date: form.date }).eq('id', editId)
-      )
-      if (!ok) return
+      if (form.recurring && form.weekdays.length > 0 && form.recurrenceEnd) {
+        // Making an already-existing single event recurring: this row keeps
+        // its own date, additional instances are generated for the other
+        // matching dates going forward, and all of them share a fresh
+        // recurrence_id. Same create-a-series-only scope as new events —
+        // no bulk edit/cancel of a whole series yet.
+        const otherDates = datesForRecurrence(form.date, form.recurrenceEnd, form.weekdays).filter(d => d !== form.date)
+        if (otherDates.length === 0) { setError('No additional dates match the selected days in that range.'); return }
+        const recurrence_id = crypto.randomUUID()
+        const { ok: updateOk } = await mutate(() =>
+          supabase.from('events').update({ ...basePayload, date: form.date, recurrence_id }).eq('id', editId)
+        )
+        if (!updateOk) return
+        const rows = otherDates.map(date => ({ ...basePayload, date, is_active: true, recurrence_id }))
+        const { ok: insertOk } = await mutate(() => supabase.from('events').insert(rows))
+        if (!insertOk) return
+      } else {
+        const { ok } = await mutate(() =>
+          supabase.from('events').update({ ...basePayload, date: form.date }).eq('id', editId)
+        )
+        if (!ok) return
+      }
     } else if (form.recurring && form.weekdays.length > 0 && form.recurrenceEnd) {
       const dates = datesForRecurrence(form.date, form.recurrenceEnd, form.weekdays)
       if (dates.length === 0) { setError('No dates match the selected days in that range.'); return }
@@ -149,6 +170,7 @@ export function AdminEventsPage() {
 
     setShowForm(false)
     setEditId(null)
+    setEditingRecurrenceId(null)
     setForm(BLANK)
     load()
   }
@@ -209,9 +231,19 @@ export function AdminEventsPage() {
               onAllDayChange={is_all_day => setForm(f => ({ ...f, is_all_day }))}
             />
 
-            {!editId && (
+            {editId && editingRecurrenceId ? (
+              <div className="rounded-xl border border-gray-100 p-3.5">
+                <p className="font-body text-[12px] text-gray-500">
+                  This event is part of a recurring series. Editing here only changes this occurrence — bulk edit/cancel of a whole series isn't supported yet.
+                </p>
+              </div>
+            ) : (
               <div className="flex flex-col gap-3 rounded-xl border border-gray-100 p-3.5">
-                <Toggle checked={form.recurring} onChange={recurring => setForm(f => ({ ...f, recurring }))} label="Recurring event" />
+                <Toggle
+                  checked={form.recurring}
+                  onChange={recurring => setForm(f => ({ ...f, recurring }))}
+                  label={editId ? 'Make this a recurring event' : 'Recurring event'}
+                />
                 {form.recurring && (
                   <>
                     <div className="flex gap-1.5">
@@ -236,7 +268,9 @@ export function AdminEventsPage() {
                         className={inputClass} />
                     </FormField>
                     <p className="font-body text-[11px] text-gray-400">
-                      Creates one event per matching day from the date above through this end date.
+                      {editId
+                        ? "Creates additional events on matching days from this event's date through the end date, grouped with this one as a series."
+                        : 'Creates one event per matching day from the date above through this end date.'}
                     </p>
                   </>
                 )}
