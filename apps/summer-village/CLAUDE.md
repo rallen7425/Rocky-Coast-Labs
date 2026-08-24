@@ -18,14 +18,14 @@ The admin console (`/admin`) has real, working CRUD for Alerts, Announcements, E
 4. **Added catch-all routes inside `AppShell` and `AdminShell`** — an unmatched path within either shell (e.g. a stale bookmark to a since-removed route) previously rendered blank; now redirects to `/` or `/admin` respectively.
 5. **Set up dedicated test-fixture accounts for live testing** — `test-admin@summer-village-life.test` (Supabase Auth, `app_metadata.role = 'admin'`), separate from the real personal admin login, so future sessions can interactively verify the admin console without touching real credentials. Credentials in `rocky-coast-labs/.secrets/test-accounts.json` (gitignored); a scoped Bash/Read permission rule for that one file lives in `apps/summer-village/.claude/settings.local.json` (gitignored, personal). Structured for `test-owner`/`test-renter` accounts once those roles are exercised.
 6. **Closed out a stale Known Issue by inspection**: whether a user who clears `localStorage` but still holds a live session is routed correctly. Resolved — this app's Supabase client uses default (localStorage-based) session persistence with no custom storage/cookie adapter (`src/lib/supabase.ts`), so the session and the guest-mode flag live in the same storage; clearing `localStorage` clears both together. The scenario the old issue described (session survives, storage doesn't) isn't reachable in this architecture.
+7. **Upgraded `vite@5.4.21` → `vite@^6.4.3`, closing the `esbuild` dev-server-only `npm audit` advisory** (`esbuild <=0.24.2`; vite 6 bundles `esbuild ^0.25.0`, `npm audit` now reports 0 vulnerabilities). The old "use vite@5, not v6+" note undersold what was actually needed: `npm audit fix --force`'s suggested `vite@8.2.2` genuinely does require Node `^20.19.0`, which this machine's pinned Node v20.10.0 does not satisfy — but vite 6.x only requires `^20.0.0` (any 20.x patch), so it was never actually blocked by the Node pin, just never revisited. Verified compatible: both `@vitejs/plugin-react@^4.3.3` and `vite-plugin-pwa@^1.3.0` already peer-accept `vite ^6.0.0` with no version bump needed; `tsc`, `vite build`, `vite preview`, and a live browser smoke test (including the PWA service worker + manifest generation) all came back clean.
+8. **Code-split the app by route**, closing the "chunk larger than 500 kB" build warning. `App.tsx` now `React.lazy()`-loads every route except Home/Login/Onboarding/Splash (kept eager — needed immediately for the auth flow), wrapped in one `<Suspense>` per shell. Guests no longer download any admin code at all unless they navigate there — most importantly `@dnd-kit` (used only by `AdminAmenitiesPage`'s drag-and-drop), which is now its own 58 kB chunk. Main entry chunk dropped from 585 kB to 477 kB; the build-size warning is gone. Live-verified every split route (guest and admin) loads correctly via real client-side navigation, plus one direct-URL load straight into the heaviest chunk (`/admin/amenities`) — no console errors, no blank/broken Suspense fallback.
 
 ### Known issues / what's broken
 
 1. **Content pages not built.** Menu items (Arrival Guide, Renter's Guide, WiFi, Property Rules, FAQ) tap to nothing; `content_pages` table is seeded but has no guest-facing detail screens and no admin management page either. Not a bug — a real feature build, still not started.
 2. **No bulk edit/cancel of a whole recurring event series** — by design, MVP scope is create-a-series-only. Editing or deleting one instance never affects its siblings.
 3. **AI event ingestion (email upload, web-link import, AI web-scan-and-propose) is out of scope** — explicit user decision, not a bug. Schema doesn't preclude adding it later.
-4. **Main JS bundle is ~583 kB (165 kB gzipped), flagged by Vite's build-size warning.** Not broken, just worth code-splitting (dynamic `import()` per route, or `manualChunks`) if load time on the guest-facing app becomes a real concern — deferred, not urgent for current traffic.
-5. **`npm audit` shows a moderate `esbuild`/`vite` dev-server-only advisory** on the intentionally-pinned `vite@5` (Node 20.10.0 constraint, see below). Not exploitable in the production build; not actionable without breaking the pin.
 
 ### Next session should pick up from
 
@@ -66,7 +66,7 @@ curl -s https://summer-village-life.vercel.app/ | grep -o 'assets/index-[a-zA-Z0
 ```
 Compare the hash against the asset filename in the just-completed build's own output. If they don't match, `vercel promote` didn't take effect — fall back to `vercel alias set "$DEPLOY_URL" summer-village-life.vercel.app` (confirmed to work) and re-check.
 
-Node version constraint: **Node v20.10.0** — use `vite@5` (not v6+).
+Node version constraint: **Node v20.10.0** — `vite@6.x` is fine (`engines: node ^20.0.0`); do **not** go to `vite@8.x` (`engines: node ^20.19.0`) without upgrading Node first, and re-check `npm audit`'s suggested target version against `engines` before ever running `npm audit fix --force` here.
 
 ---
 
