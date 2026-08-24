@@ -39,6 +39,12 @@ const STATUS_OPTS: { value: AmenityStatus; label: string; bg: string; color: str
   { value: 'closed',      label: 'Closed',       bg: 'rgba(186,26,26,0.12)', color: '#ba1a1a' },
 ]
 
+interface SubAmenityDraft {
+  key: string
+  id: string | null
+  name: string
+}
+
 interface FormState {
   name: string
   description: string
@@ -50,11 +56,13 @@ interface FormState {
   parent_id: string
   long_description: string
   photo_url: string | null
+  subAmenities: SubAmenityDraft[]
 }
 
 const BLANK: FormState = {
   name: '', description: '', status: 'open', hours_open: '', hours_close: '',
   age_restriction: '', rules: '', parent_id: '', long_description: '', photo_url: null,
+  subAmenities: [],
 }
 
 export function AdminAmenitiesPage() {
@@ -65,6 +73,7 @@ export function AdminAmenitiesPage() {
   const [form, setForm] = useState<FormState>(BLANK)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [attachSelection, setAttachSelection] = useState('')
   const { mutate, saving, error, setError } = useSupabaseMutation()
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
@@ -84,6 +93,7 @@ export function AdminAmenitiesPage() {
     setError(null)
     setForm(BLANK)
     setPhotoFile(null)
+    setAttachSelection('')
     setEditId(null)
     setShowForm(true)
   }
@@ -96,14 +106,43 @@ export function AdminAmenitiesPage() {
       age_restriction: a.age_restriction ?? '', rules: a.rules ?? '',
       parent_id: a.parent_id ?? '', long_description: a.long_description ?? '',
       photo_url: a.photo_url,
+      subAmenities: childrenOf(a.id).map(c => ({ key: c.id, id: c.id, name: c.name })),
     })
     setPhotoFile(null)
+    setAttachSelection('')
     setEditId(a.id)
     setShowForm(true)
   }
 
+  const addSubAmenity = () => {
+    setForm(f => ({ ...f, subAmenities: [...f.subAmenities, { key: crypto.randomUUID(), id: null, name: '' }] }))
+  }
+  const attachExisting = (id: string) => {
+    const existing = amenities.find(a => a.id === id)
+    if (!existing) return
+    setForm(f => ({ ...f, subAmenities: [...f.subAmenities, { key: existing.id, id: existing.id, name: existing.name }] }))
+    setAttachSelection('')
+  }
+  const renameSubAmenity = (key: string, name: string) => {
+    setForm(f => ({ ...f, subAmenities: f.subAmenities.map(s => (s.key === key ? { ...s, name } : s)) }))
+  }
+  const removeSubAmenity = (key: string) => {
+    setForm(f => ({ ...f, subAmenities: f.subAmenities.filter(s => s.key !== key) }))
+  }
+
   const save = async (e: FormEvent) => {
     e.preventDefault()
+
+    // A group only makes sense with 2+ sub-amenities -- with exactly one,
+    // it should just be a single flat amenity instead.
+    if (!form.parent_id && form.subAmenities.length === 1) {
+      setError('Add at least one more sub-amenity, or remove it — a group needs at least two.')
+      return
+    }
+    if (form.subAmenities.some(s => !s.name.trim())) {
+      setError('Sub-amenity names can\'t be empty.')
+      return
+    }
 
     let photo_url = form.photo_url
     if (photoFile) {
@@ -128,14 +167,44 @@ export function AdminAmenitiesPage() {
       photo_url,
     }
 
+    let parentId = editId
     if (editId) {
       const { ok } = await mutate(() => supabase.from('amenities').update(payload).eq('id', editId))
       if (!ok) return
     } else {
-      const { ok } = await mutate(() =>
-        supabase.from('amenities').insert({ ...payload, hidden: false, sort_order: amenities.length })
+      const { data, ok } = await mutate(() =>
+        supabase.from('amenities').insert({ ...payload, hidden: false, sort_order: amenities.length }).select().single()
       )
       if (!ok) return
+      parentId = (data as Amenity | null)?.id ?? null
+    }
+
+    // Reconcile inline sub-amenities -- only meaningful when this amenity is
+    // (or is becoming) a top-level one. An entry can be a brand-new
+    // sub-amenity (no id) or an existing amenity attached from the picker
+    // (has an id but wasn't necessarily a child before) -- either way it
+    // gets parent_id set to this parent. Anything removed from the list is
+    // *detached* (parent_id -> null), not deleted -- removing something
+    // from a group shouldn't destroy it, especially since it may have been
+    // a real standalone amenity before being attached here. A real delete
+    // is still available via that item's own trash icon in the main list.
+    if (!form.parent_id && parentId) {
+      const existingChildren = editId ? childrenOf(editId) : []
+      const keptIds = new Set(form.subAmenities.filter(s => s.id).map(s => s.id))
+      const removed = existingChildren.filter(c => !keptIds.has(c.id))
+
+      if (removed.length > 0) {
+        const { error: detachError } = await supabase.from('amenities').update({ parent_id: null }).in('id', removed.map(c => c.id))
+        if (detachError) { setError(detachError.message); load(); return }
+      }
+      for (const sub of form.subAmenities) {
+        const { error: subError } = sub.id
+          ? await supabase.from('amenities').update({ name: sub.name, parent_id: parentId }).eq('id', sub.id)
+          : await supabase.from('amenities').insert({
+              name: sub.name, parent_id: parentId, status: 'open', hidden: false, sort_order: amenities.length,
+            })
+        if (subError) { setError(subError.message); load(); return }
+      }
     }
 
     setShowForm(false)
@@ -282,13 +351,84 @@ export function AdminAmenitiesPage() {
             </FormField>
 
             <FormField label="Sub-amenity of (optional)">
-              <select value={form.parent_id} onChange={e => setForm(f => ({ ...f, parent_id: e.target.value }))} className={inputClass}>
+              <select
+                value={form.parent_id}
+                onChange={e => setForm(f => ({ ...f, parent_id: e.target.value }))}
+                disabled={form.subAmenities.length > 0}
+                className={inputClass}
+                style={form.subAmenities.length > 0 ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+              >
                 <option value="">None (top-level amenity)</option>
                 {topLevel.filter(a => a.id !== editId).map(a => (
                   <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
               </select>
+              {form.subAmenities.length > 0 && (
+                <p className="font-body text-[11px] text-gray-400 mt-1.5">
+                  This amenity has sub-amenities of its own, so it can't also be a sub-amenity of something else.
+                </p>
+              )}
             </FormField>
+
+            {!form.parent_id && (
+              <FormField label="Sub-Amenities (optional — needs at least 2, e.g. individual pools under a &quot;Pools&quot; group)">
+                <div className="flex flex-col gap-2">
+                  {form.subAmenities.map(sub => (
+                    <div key={sub.key} className="flex gap-2 items-center">
+                      <input
+                        value={sub.name}
+                        onChange={e => renameSubAmenity(sub.key, e.target.value)}
+                        placeholder="Sub-amenity name"
+                        className={inputClass}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeSubAmenity(sub.key)}
+                        className="p-2.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addSubAmenity}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-gray-300 text-gray-500 font-body text-[13px] hover:bg-gray-50 transition-colors self-start"
+                  >
+                    <Plus size={14} /> Add Sub-Amenity
+                  </button>
+
+                  {(() => {
+                    const attachedIds = new Set(form.subAmenities.map(s => s.id).filter(Boolean))
+                    const candidates = topLevel.filter(a => a.id !== editId && !attachedIds.has(a.id))
+                    if (candidates.length === 0) return null
+                    return (
+                      <div className="flex gap-2 items-center mt-1">
+                        <select
+                          value={attachSelection}
+                          onChange={e => setAttachSelection(e.target.value)}
+                          className={inputClass}
+                        >
+                          <option value="">Or attach an existing amenity…</option>
+                          {candidates.map(a => (
+                            <option key={a.id} value={a.id}>{a.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!attachSelection}
+                          onClick={() => attachExisting(attachSelection)}
+                          className="px-3 py-2.5 rounded-lg font-body text-[13px] text-white disabled:opacity-40 flex-shrink-0"
+                          style={{ background: '#103457' }}
+                        >
+                          Attach
+                        </button>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </FormField>
+            )}
 
             <FormField label="Long Description (optional, shown on detail page)">
               <textarea
