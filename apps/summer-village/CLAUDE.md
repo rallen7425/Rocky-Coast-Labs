@@ -60,7 +60,7 @@ vercel promote "$DEPLOY_URL"         # reassign ALL production domains — see t
 ```
 Do **not** `vercel build` locally then `vercel deploy --prebuilt` for this project — see Infrastructure notes above for why.
 
-**Mandatory post-deploy check — the live domain has silently failed to update before (see "Completed this session" #2 above).** Never trust the deploy command's own success output:
+**Mandatory post-deploy check — the live domain has silently failed to update before** (a 44-day-stale deployment was found and fixed in an earlier session; see git history around 2026-08-23 for the full incident). Never trust the deploy command's own success output:
 ```bash
 curl -s https://summer-village-life.vercel.app/ | grep -o 'assets/index-[a-zA-Z0-9]*\.js'
 ```
