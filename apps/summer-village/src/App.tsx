@@ -13,6 +13,7 @@ import { SplashPage } from './features/auth/SplashPage'
 import { AdminLayout } from './features/admin/AdminLayout'
 import { AdminDashboard } from './features/admin/AdminDashboard'
 import { AdminAlertsPage } from './features/admin/AdminAlertsPage'
+import { AdminAnnouncementsPage } from './features/admin/AdminAnnouncementsPage'
 import { AdminEventsPage } from './features/admin/AdminEventsPage'
 import { AdminAmenitiesPage } from './features/admin/AdminAmenitiesPage'
 
@@ -44,6 +45,7 @@ function AdminShell() {
       <Routes>
         <Route index element={<AdminDashboard />} />
         <Route path="alerts" element={<AdminAlertsPage />} />
+        <Route path="announcements" element={<AdminAnnouncementsPage />} />
         <Route path="events" element={<AdminEventsPage />} />
         <Route path="amenities" element={<AdminAmenitiesPage />} />
       </Routes>

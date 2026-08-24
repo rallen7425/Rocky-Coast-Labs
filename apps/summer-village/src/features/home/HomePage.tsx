@@ -1,14 +1,17 @@
 import { Bell } from 'lucide-react'
 import { StatusBar } from '../../components/StatusBar'
 import { AlertBanner } from '../../components/AlertBanner'
+import { AnnouncementBanner } from '../../components/AnnouncementBanner'
 import { YourPlanCard } from './YourPlanCard'
 import { WeatherRow } from './WeatherRow'
 import { EventsScroll } from './EventsScroll'
 import { useActiveAlert } from '../../lib/useAlerts'
+import { useAnnouncements } from '../../lib/useAnnouncements'
 import barnPhoto from '../../assets/sv-barn.jpg'
 
 export function HomePage() {
   const { alert } = useActiveAlert()
+  const { announcements } = useAnnouncements()
 
   return (
     <div className="relative w-full min-h-screen overflow-hidden">
@@ -50,6 +53,7 @@ export function HomePage() {
 
         {/* Alert — live from Supabase, falls back to null (hidden) */}
         {alert && <AlertBanner message={alert.message} />}
+        <AnnouncementBanner announcements={announcements} />
 
         {/* Hero spacer — barn photo shows through here */}
         <div className="flex-1 min-h-[60px]" />

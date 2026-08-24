@@ -1,13 +1,14 @@
 import { ReactNode, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Bell, Calendar, Dumbbell, LayoutDashboard, LogOut, Menu } from 'lucide-react'
+import { Bell, Calendar, Dumbbell, LayoutDashboard, LogOut, Megaphone, Menu } from 'lucide-react'
 import { useAuth } from '../../lib/auth'
 
 const NAV_ITEMS = [
-  { to: '/admin',           label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { to: '/admin/alerts',    label: 'Alerts',    icon: Bell },
-  { to: '/admin/events',    label: 'Events',    icon: Calendar },
-  { to: '/admin/amenities', label: 'Amenities', icon: Dumbbell },
+  { to: '/admin',               label: 'Dashboard',     icon: LayoutDashboard, exact: true },
+  { to: '/admin/alerts',        label: 'Alerts',        icon: Bell },
+  { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },
+  { to: '/admin/events',        label: 'Events',        icon: Calendar },
+  { to: '/admin/amenities',     label: 'Amenities',     icon: Dumbbell },
 ]
 
 export function AdminLayout({ children }: { children: ReactNode }) {
