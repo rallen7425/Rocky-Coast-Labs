@@ -2,6 +2,9 @@ import { useEffect, useState, FormEvent } from 'react'
 import { Plus, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { AdminPageTitle } from './AdminLayout'
+import { Modal } from './components/Modal'
+import { FormField, FormError, inputClass, textareaClass } from './components/FormField'
+import { useSupabaseMutation } from './hooks/useSupabaseMutation'
 import { format, parseISO } from 'date-fns'
 
 interface Alert {
@@ -23,8 +26,8 @@ export function AdminAlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ message: '', severity: 'warning' as Alert['severity'], expires_at: '' })
+  const { mutate, saving, error, setError } = useSupabaseMutation()
 
   const load = async () => {
     const { data } = await supabase
@@ -38,23 +41,25 @@ export function AdminAlertsPage() {
   useEffect(() => { load() }, [])
 
   const dismiss = async (id: string) => {
-    await supabase.from('alerts').update({ is_active: false }).eq('id', id)
-    load()
+    const { ok } = await mutate(() => supabase.from('alerts').update({ is_active: false }).eq('id', id))
+    if (ok) load()
   }
 
   const create = async (e: FormEvent) => {
     e.preventDefault()
-    setSaving(true)
-    await supabase.from('alerts').insert({
-      message: form.message,
-      severity: form.severity,
-      is_active: true,
-      expires_at: form.expires_at || null,
-    })
-    setForm({ message: '', severity: 'warning', expires_at: '' })
-    setShowForm(false)
-    setSaving(false)
-    load()
+    const { ok } = await mutate(() =>
+      supabase.from('alerts').insert({
+        message: form.message,
+        severity: form.severity,
+        is_active: true,
+        expires_at: form.expires_at || null,
+      })
+    )
+    if (ok) {
+      setForm({ message: '', severity: 'warning', expires_at: '' })
+      setShowForm(false)
+      load()
+    }
   }
 
   return (
@@ -62,7 +67,7 @@ export function AdminAlertsPage() {
       <div className="flex items-center justify-between mb-6">
         <AdminPageTitle>Alerts</AdminPageTitle>
         <button
-          onClick={() => setShowForm(v => !v)}
+          onClick={() => { setError(null); setShowForm(true) }}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-body font-semibold text-[14px] text-white transition-colors"
           style={{ background: '#103457' }}
         >
@@ -72,54 +77,53 @@ export function AdminAlertsPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={create} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-5 flex flex-col gap-4">
-          <h3 className="font-display font-semibold text-gray-900 text-[16px]">Post New Alert</h3>
+        <Modal title="Post New Alert" onClose={() => setShowForm(false)}>
+          <form onSubmit={create} className="flex flex-col gap-4">
+            <FormError message={error} />
 
-          <div>
-            <label className="block font-body text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Message</label>
-            <textarea
-              required
-              value={form.message}
-              onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
-              rows={2}
-              placeholder="e.g. Adult Pool closed until 11am — maintenance"
-              className="w-full rounded-xl px-4 py-3 font-body text-[14px] text-gray-900 border border-gray-200 outline-none focus:border-blue-400 resize-none"
-            />
-          </div>
-
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="block font-body text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Severity</label>
-              <select
-                value={form.severity}
-                onChange={e => setForm(f => ({ ...f, severity: e.target.value as Alert['severity'] }))}
-                className="w-full rounded-xl px-4 py-3 font-body text-[14px] text-gray-900 border border-gray-200 outline-none focus:border-blue-400"
-              >
-                <option value="info">Info</option>
-                <option value="warning">Warning</option>
-                <option value="emergency">Emergency</option>
-              </select>
-            </div>
-            <div className="flex-1">
-              <label className="block font-body text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Expires (optional)</label>
-              <input
-                type="datetime-local"
-                value={form.expires_at}
-                onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
-                className="w-full rounded-xl px-4 py-3 font-body text-[14px] text-gray-900 border border-gray-200 outline-none focus:border-blue-400"
+            <FormField label="Message" required>
+              <textarea
+                required
+                value={form.message}
+                onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
+                rows={2}
+                placeholder="e.g. Adult Pool closed until 11am — maintenance"
+                className={textareaClass}
               />
-            </div>
-          </div>
+            </FormField>
 
-          <div className="flex gap-3 justify-end">
-            <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2.5 rounded-xl font-body text-[14px] text-gray-600 border border-gray-200 hover:bg-gray-50">
-              Cancel
-            </button>
-            <button type="submit" disabled={saving} className="px-6 py-2.5 rounded-xl font-body font-semibold text-[14px] text-white disabled:opacity-60" style={{ background: '#103457' }}>
-              {saving ? 'Posting…' : 'Post Alert'}
-            </button>
-          </div>
-        </form>
+            <div className="flex gap-4">
+              <FormField label="Severity" className="flex-1">
+                <select
+                  value={form.severity}
+                  onChange={e => setForm(f => ({ ...f, severity: e.target.value as Alert['severity'] }))}
+                  className={inputClass}
+                >
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </FormField>
+              <FormField label="Expires (optional)" className="flex-1">
+                <input
+                  type="datetime-local"
+                  value={form.expires_at}
+                  onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
+                  className={inputClass}
+                />
+              </FormField>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2.5 rounded-xl font-body text-[14px] text-gray-600 border border-gray-200 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={saving} className="px-6 py-2.5 rounded-xl font-body font-semibold text-[14px] text-white disabled:opacity-60" style={{ background: '#103457' }}>
+                {saving ? 'Posting…' : 'Post Alert'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {loading ? (
