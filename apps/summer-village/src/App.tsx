@@ -5,6 +5,7 @@ import { FloatingNav } from './components/FloatingNav'
 import { MenuDrawer } from './features/menu/MenuDrawer'
 import { HomePage } from './features/home/HomePage'
 import { VillagePage } from './features/village/VillagePage'
+import { AmenityDetailPage } from './features/village/AmenityDetailPage'
 import { EventsPage } from './features/events/EventsPage'
 import { EventDetailPage } from './features/events/EventDetailPage'
 import { GuidePage } from './features/guide/GuidePage'
@@ -31,6 +32,7 @@ function AppShell() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/village" element={<VillagePage />} />
+        <Route path="/amenities/:id" element={<AmenityDetailPage />} />
         <Route path="/events" element={<EventsPage />} />
         <Route path="/events/:id" element={<EventDetailPage />} />
         <Route path="/guide" element={<GuidePage />} />

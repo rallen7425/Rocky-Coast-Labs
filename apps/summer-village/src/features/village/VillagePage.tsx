@@ -1,5 +1,6 @@
 import { useState, ReactNode } from 'react'
-import { Dumbbell, Flame, Gamepad2, Calendar } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Dumbbell, Flame, Gamepad2, Calendar, Waves } from 'lucide-react'
 import { StatusBar } from '../../components/StatusBar'
 import { PageHeader } from '../../components/PageHeader'
 import { SectionLabel } from '../../components/SectionLabel'
@@ -26,7 +27,7 @@ const ICONS: Record<string, ReactNode> = {
 }
 
 function iconFor(amenity: Amenity) {
-  return ICONS[amenity.name.toLowerCase()] ?? (amenity.category === 'pool' ? '🏊' : '🏛️')
+  return ICONS[amenity.name.toLowerCase()] ?? <Waves size={17} />
 }
 
 function amenityMeta(amenity: Amenity): string {
@@ -37,12 +38,13 @@ function amenityMeta(amenity: Amenity): string {
   if (amenity.age_restriction) parts.push(amenity.age_restriction)
   if (amenity.location) parts.push(amenity.location)
   if (amenity.notes) parts.push(amenity.notes)
-  return parts.join(' · ') || (amenity.category === 'pool' ? 'Open daily' : '')
+  return parts.join(' · ')
 }
 
 export function VillagePage() {
+  const navigate = useNavigate()
   const [mapExpanded, setMapExpanded] = useState(false)
-  const { pools, other, loading } = useAmenities()
+  const { groups, loading } = useAmenities()
 
   return (
     <>
@@ -81,37 +83,32 @@ export function VillagePage() {
               </button>
             </div>
 
-            {/* Pools */}
-            {!loading && pools.length > 0 && (
-              <div>
-                <SectionLabel>Pools</SectionLabel>
-                <RowCard>
-                  {pools.map(pool => (
-                    <RowItem
-                      key={pool.id}
-                      icon={iconFor(pool)}
-                      title={pool.name}
-                      meta={amenityMeta(pool)}
-                      right={<StatusBadge status={pool.status} />}
-                    />
-                  ))}
-                </RowCard>
-              </div>
-            )}
-
-            {/* Amenities */}
-            {!loading && other.length > 0 && (
+            {/* Amenities — top-level amenities, each with its own sub-amenities if any */}
+            {!loading && groups.length > 0 && (
               <div>
                 <SectionLabel>Amenities</SectionLabel>
                 <RowCard>
-                  {other.map(amenity => (
-                    <RowItem
-                      key={amenity.id}
-                      icon={iconFor(amenity)}
-                      title={amenity.name}
-                      meta={amenityMeta(amenity)}
-                      right={amenity.status !== 'open' ? <StatusBadge status={amenity.status} /> : undefined}
-                    />
+                  {groups.map(({ parent, children }) => (
+                    <div key={parent.id}>
+                      <RowItem
+                        icon={iconFor(parent)}
+                        title={parent.name}
+                        meta={amenityMeta(parent)}
+                        right={parent.status !== 'open' ? <StatusBadge status={parent.status} /> : undefined}
+                        onClick={() => navigate(`/amenities/${parent.id}`)}
+                      />
+                      {children.map(child => (
+                        <div key={child.id} className="pl-6">
+                          <RowItem
+                            icon={iconFor(child)}
+                            title={child.name}
+                            meta={amenityMeta(child)}
+                            right={child.status !== 'open' ? <StatusBadge status={child.status} /> : undefined}
+                            onClick={() => navigate(`/amenities/${child.id}`)}
+                          />
+                        </div>
+                      ))}
+                    </div>
                   ))}
                 </RowCard>
               </div>
