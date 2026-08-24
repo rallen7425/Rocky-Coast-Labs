@@ -44,11 +44,19 @@ export default defineConfig({
             },
           },
           {
-            // Cache Supabase REST API responses for offline-first reads
+            // Supabase REST reads: always prefer a fresh network response —
+            // StaleWhileRevalidate was serving a pre-write snapshot back to
+            // the admin console immediately after a save (insert/update
+            // succeeds, but the list re-fetch that follows it was answered
+            // from cache, making a real save look like it silently failed).
+            // NetworkFirst keeps the original offline-first intent (falls
+            // back to cache only when the network is actually unavailable)
+            // without ever showing stale data while online.
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-            handler: 'StaleWhileRevalidate',
+            handler: 'NetworkFirst',
             options: {
-              cacheName: 'supabase-cache',
+              cacheName: 'supabase-cache-v2',
+              networkTimeoutSeconds: 5,
               expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
             },

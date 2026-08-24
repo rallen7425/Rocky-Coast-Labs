@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "apps/summer-village"],
       "port": 5173
+    },
+    {
+      "name": "summer-village-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview", "--prefix", "apps/summer-village", "--", "--port", "4173"],
+      "port": 4173
     }
   ]
 }
