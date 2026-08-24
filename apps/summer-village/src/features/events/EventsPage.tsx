@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { format, isToday, isTomorrow, isSaturday, isSunday, nextSaturday, nextSunday, previousSaturday, parseISO } from 'date-fns'
 import { StatusBar } from '../../components/StatusBar'
 import { PageHeader } from '../../components/PageHeader'
@@ -106,12 +107,16 @@ export function EventsPage() {
 }
 
 function EventListItem({ event, last }: { event: Event; last: boolean }) {
-  const timeStr = formatTime(event.time_start) + (event.time_end ? `–${formatTime(event.time_end)}` : '')
+  const navigate = useNavigate()
+  const timeStr = event.is_all_day
+    ? 'All day'
+    : formatTime(event.time_start) + (event.time_end ? `–${formatTime(event.time_end)}` : '')
 
   return (
     <div
-      className="flex items-start gap-3 px-4 py-3.5"
+      className="flex items-start gap-3 px-4 py-3.5 cursor-pointer active:bg-white/5 transition-colors"
       style={{ borderBottom: last ? 'none' : '1px solid rgba(255,255,255,0.1)' }}
+      onClick={() => navigate(`/events/${event.id}`)}
     >
       {/* Dot */}
       <div className="mt-[5px] flex-shrink-0">

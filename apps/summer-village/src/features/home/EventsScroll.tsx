@@ -46,6 +46,7 @@ export function EventsScroll() {
 }
 
 function EventCard({ event }: { event: Event }) {
+  const navigate = useNavigate()
   const { label, style } = dayTag(event.date)
 
   const tagColors = {
@@ -54,12 +55,14 @@ function EventCard({ event }: { event: Event }) {
     future:   { background: 'rgba(255,255,255,0.22)', color: 'rgba(255,255,255,0.85)' },
   }
 
-  const timeStr = formatTime(event.time_start) + (event.time_end ? `–${formatTime(event.time_end)}` : '')
+  const timeStr = event.is_all_day
+    ? 'All day'
+    : formatTime(event.time_start) + (event.time_end ? `–${formatTime(event.time_end)}` : '')
   const location = event.is_onsite ? (event.venue ?? 'On-site') : (event.city ?? event.venue ?? '')
 
   return (
     <div
-      className="flex-shrink-0 flex flex-col rounded-[14px] p-[11px_12px]"
+      className="flex-shrink-0 flex flex-col rounded-[14px] p-[11px_12px] cursor-pointer"
       style={{
         width: 158,
         background: 'rgba(255,255,255,0.12)',
@@ -67,6 +70,7 @@ function EventCard({ event }: { event: Event }) {
         WebkitBackdropFilter: 'blur(20px)',
         border: '1px solid rgba(255,255,255,0.22)',
       }}
+      onClick={() => navigate(`/events/${event.id}`)}
     >
       <div className="flex justify-between items-center mb-[7px]">
         <span
